@@ -7,7 +7,7 @@ const shellEscape = (str: string): string => {
 }
 
 export const getCliCreateCloneCommand = (values: FormValues, showPassword?: boolean) => {
-  const { dbUser, dbPassword, branch, protectionDurationMinutes, cloneId } = values
+  const { dbUser, dbPassword, snapshotId, protectionDurationMinutes, cloneId } = values
 
   const usernameDisplay = dbUser ? shellEscape(dbUser) : `<USERNAME>`
 
@@ -25,7 +25,7 @@ export const getCliCreateCloneCommand = (values: FormValues, showPassword?: bool
 
   --password ${passwordDisplay} \
 
-  ${branch ? `--branch ${shellEscape(branch)}` : ``} \
+  ${snapshotId ? `--snapshot-id ${shellEscape(snapshotId)}` : ``} \
 
   ${protectedFlag} \
 
