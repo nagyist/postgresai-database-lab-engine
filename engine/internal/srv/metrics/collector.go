@@ -27,6 +27,9 @@ const (
 	dockerStatsTimeout   = 5 * time.Second
 	dockerStatsWorkers   = 10
 	cpuNoData            = -1.0
+
+	// postgresTimestampFormat is the default text representation of PostgreSQL's timestamp with time zone.
+	postgresTimestampFormat = "2006-01-02 15:04:05.999999-07"
 )
 
 // CloningService defines the interface for clone and snapshot operations needed by metrics.
@@ -39,6 +42,7 @@ type CloningService interface {
 type RetrievalService interface {
 	GetRetrievalMode() models.RetrievalMode
 	GetRetrievalStatus() models.RetrievalStatus
+	ReportSyncStatus(ctx context.Context) (*models.Sync, error)
 }
 
 // PoolService defines the interface for pool operations needed by metrics.
@@ -152,6 +156,7 @@ func (c *Collector) collectAll(ctx context.Context) {
 	c.collectCloneMetrics(ctx)
 	c.collectSnapshotMetrics()
 	c.collectBranchMetrics()
+	c.collectSyncMetrics(ctx)
 
 	c.metrics.ScrapeDurationSeconds.Set(time.Since(start).Seconds())
 	c.metrics.ScrapeSuccessTimestamp.Set(float64(time.Now().Unix()))
@@ -563,4 +568,58 @@ func (c *Collector) collectBranchMetrics() {
 	}
 
 	c.metrics.BranchesTotal.Set(float64(totalBranches))
+}
+
+func (c *Collector) collectSyncMetrics(ctx context.Context) {
+	if c.retrieval.GetRetrievalMode() != models.Physical {
+		return
+	}
+
+	syncState, err := c.retrieval.ReportSyncStatus(ctx)
+	if err != nil {
+		log.Dbg("failed to get sync status for metrics:", err)
+		c.metrics.ScrapeErrorsTotal.Inc()
+		c.setSyncStatusNotAvailable()
+
+		return
+	}
+
+	if syncState == nil {
+		c.setSyncStatusNotAvailable()
+
+		return
+	}
+
+	c.metrics.SyncStatus.Reset()
+	c.metrics.SyncStatus.WithLabelValues(string(syncState.Status.Code)).Set(1)
+	c.metrics.SyncWALLagSeconds.Set(float64(syncState.ReplicationLag))
+	c.metrics.SyncUptimeSeconds.Set(float64(syncState.ReplicationUptime))
+
+	if ts := parseTimestamp(syncState.LastReplayedLsnAt); ts != nil {
+		c.metrics.SyncLastReplayedAt.Set(float64(ts.Unix()))
+	}
+}
+
+func (c *Collector) setSyncStatusNotAvailable() {
+	c.metrics.SyncStatus.Reset()
+	c.metrics.SyncStatus.WithLabelValues(string(models.SyncStatusNotAvailable)).Set(1)
+	c.metrics.SyncUptimeSeconds.Set(0)
+}
+
+func parseTimestamp(value string) *time.Time {
+	if value == "" {
+		return nil
+	}
+
+	formats := []string{time.RFC3339Nano, postgresTimestampFormat}
+
+	for _, format := range formats {
+		if ts, err := time.Parse(format, value); err == nil {
+			return &ts
+		}
+	}
+
+	log.Dbg("failed to parse timestamp:", value)
+
+	return nil
 }

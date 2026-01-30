@@ -74,6 +74,17 @@ The endpoint is publicly accessible (no authentication required) and returns met
 | `dblab_datasets_total` | Gauge | `pool` | Total number of datasets (slots) in the pool |
 | `dblab_datasets_available` | Gauge | `pool` | Number of available (non-busy) dataset slots for reuse |
 
+### Sync Instance Metrics (Physical Mode)
+
+These metrics are only available when DBLab is running in physical mode with a sync instance enabled. They track the WAL replay status of the sync instance.
+
+| Metric Name | Type | Labels | Description |
+|-------------|------|--------|-------------|
+| `dblab_sync_status` | Gauge | `status` | Status of the sync instance (1=active for status code) |
+| `dblab_sync_wal_lag_seconds` | Gauge | - | WAL replay lag in seconds for the sync instance |
+| `dblab_sync_uptime_seconds` | Gauge | - | Uptime of the sync instance in seconds |
+| `dblab_sync_last_replayed_timestamp` | Gauge | - | Unix timestamp of the last replayed transaction |
+
 ### Observability Metrics
 
 These metrics help monitor the health of the metrics collection system itself.
@@ -146,6 +157,18 @@ dblab_clones_by_status
 time() - dblab_scrape_success_timestamp
 ```
 
+### WAL Replay Lag (Physical Mode)
+
+```promql
+dblab_sync_wal_lag_seconds
+```
+
+### Time Since Last Replayed Transaction
+
+```promql
+time() - dblab_sync_last_replayed_timestamp
+```
+
 ## Alerting Examples
 
 ### Low Disk Space Alert
@@ -198,6 +221,32 @@ time() - dblab_scrape_success_timestamp
   annotations:
     summary: "DBLab metrics collection is stale"
     description: "DBLab metrics have not been updated for more than 5 minutes"
+```
+
+### High WAL Replay Lag Alert (Physical Mode)
+
+```yaml
+- alert: DBLabHighWALLag
+  expr: dblab_sync_wal_lag_seconds > 3600
+  for: 10m
+  labels:
+    severity: warning
+  annotations:
+    summary: "DBLab sync instance has high WAL lag"
+    description: "DBLab sync instance WAL replay is {{ $value | humanizeDuration }} behind"
+```
+
+### Sync Instance Down Alert (Physical Mode)
+
+```yaml
+- alert: DBLabSyncDown
+  expr: dblab_sync_status{status="down"} == 1 or dblab_sync_status{status="error"} == 1
+  for: 5m
+  labels:
+    severity: critical
+  annotations:
+    summary: "DBLab sync instance is down"
+    description: "DBLab sync instance is not healthy"
 ```
 
 ## OpenTelemetry Integration
