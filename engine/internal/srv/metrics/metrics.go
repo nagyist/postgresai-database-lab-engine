@@ -66,6 +66,12 @@ type Metrics struct {
 	DatasetsTotal     *prometheus.GaugeVec
 	DatasetsAvailable *prometheus.GaugeVec
 
+	// sync instance metrics (physical mode)
+	SyncStatus         *prometheus.GaugeVec
+	SyncWALLagSeconds  prometheus.Gauge
+	SyncUptimeSeconds  prometheus.Gauge
+	SyncLastReplayedAt prometheus.Gauge
+
 	// observability metrics
 	ScrapeSuccessTimestamp prometheus.Gauge
 	ScrapeDurationSeconds  prometheus.Gauge
@@ -325,6 +331,37 @@ func NewMetrics() *Metrics {
 			[]string{"pool"},
 		),
 
+		// sync instance metrics (physical mode)
+		SyncStatus: prometheus.NewGaugeVec(
+			prometheus.GaugeOpts{
+				Namespace: namespace,
+				Name:      "sync_status",
+				Help:      "Status of the sync instance (1=active for status code)",
+			},
+			[]string{"status"},
+		),
+		SyncWALLagSeconds: prometheus.NewGauge(
+			prometheus.GaugeOpts{
+				Namespace: namespace,
+				Name:      "sync_wal_lag_seconds",
+				Help:      "WAL replay lag in seconds for the sync instance (physical mode)",
+			},
+		),
+		SyncUptimeSeconds: prometheus.NewGauge(
+			prometheus.GaugeOpts{
+				Namespace: namespace,
+				Name:      "sync_uptime_seconds",
+				Help:      "Uptime of the sync instance in seconds",
+			},
+		),
+		SyncLastReplayedAt: prometheus.NewGauge(
+			prometheus.GaugeOpts{
+				Namespace: namespace,
+				Name:      "sync_last_replayed_timestamp",
+				Help:      "Unix timestamp of the last replayed transaction",
+			},
+		),
+
 		// observability metrics
 		ScrapeSuccessTimestamp: prometheus.NewGauge(
 			prometheus.GaugeOpts{
@@ -385,6 +422,10 @@ func (m *Metrics) Register(reg prometheus.Registerer) error {
 		m.BranchesTotal,
 		m.DatasetsTotal,
 		m.DatasetsAvailable,
+		m.SyncStatus,
+		m.SyncWALLagSeconds,
+		m.SyncUptimeSeconds,
+		m.SyncLastReplayedAt,
 		m.ScrapeSuccessTimestamp,
 		m.ScrapeDurationSeconds,
 		m.ScrapeErrorsTotal,
@@ -415,4 +456,5 @@ func (m *Metrics) ResetDynamic() {
 	m.SnapshotsByPool.Reset()
 	m.DatasetsTotal.Reset()
 	m.DatasetsAvailable.Reset()
+	m.SyncStatus.Reset()
 }

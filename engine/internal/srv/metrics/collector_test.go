@@ -16,6 +16,7 @@ import (
 	"github.com/docker/docker/api/types/container"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+	dto "github.com/prometheus/client_model/go"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -35,6 +36,10 @@ type mockRetrievalService struct{}
 func (m *mockRetrievalService) GetRetrievalMode() models.RetrievalMode { return models.Physical }
 
 func (m *mockRetrievalService) GetRetrievalStatus() models.RetrievalStatus { return models.Inactive }
+
+func (m *mockRetrievalService) ReportSyncStatus(_ context.Context) (*models.Sync, error) {
+	return nil, nil
+}
 
 type mockPoolService struct{}
 
@@ -445,4 +450,176 @@ func TestCalculateCPUPercent_Concurrent(t *testing.T) {
 	wg.Wait()
 
 	assert.Len(t, c.prevCPUStats, cloneCount)
+}
+
+type configMockRetrievalService struct {
+	mode       models.RetrievalMode
+	syncStatus *models.Sync
+	syncErr    error
+}
+
+func (m *configMockRetrievalService) GetRetrievalMode() models.RetrievalMode { return m.mode }
+
+func (m *configMockRetrievalService) GetRetrievalStatus() models.RetrievalStatus {
+	return models.Inactive
+}
+func (m *configMockRetrievalService) ReportSyncStatus(_ context.Context) (*models.Sync, error) {
+	return m.syncStatus, m.syncErr
+}
+
+func TestCollectSyncMetrics(t *testing.T) {
+	t.Run("non-physical mode skips collection", func(t *testing.T) {
+		m := NewMetrics()
+		retrieval := &configMockRetrievalService{mode: models.Logical}
+		c := &Collector{metrics: m, retrieval: retrieval, prevCPUStats: make(map[string]containerCPUState)}
+
+		c.collectSyncMetrics(context.Background())
+
+		assert.Equal(t, float64(0), getGaugeValue(m.SyncWALLagSeconds))
+		assert.Equal(t, float64(0), getGaugeValue(m.SyncUptimeSeconds))
+	})
+
+	t.Run("error from ReportSyncStatus sets not available status", func(t *testing.T) {
+		m := NewMetrics()
+		retrieval := &configMockRetrievalService{mode: models.Physical, syncErr: fmt.Errorf("connection failed")}
+		c := &Collector{metrics: m, retrieval: retrieval, prevCPUStats: make(map[string]containerCPUState)}
+
+		initialErrors := getCounterValue(m.ScrapeErrorsTotal)
+		c.collectSyncMetrics(context.Background())
+
+		assert.Equal(t, initialErrors+1, getCounterValue(m.ScrapeErrorsTotal))
+		assert.Equal(t, float64(0), getGaugeValue(m.SyncUptimeSeconds))
+		assert.Equal(t, float64(1), getGaugeVecValue(m.SyncStatus, string(models.SyncStatusNotAvailable)))
+	})
+
+	t.Run("nil sync status sets not available status and resets uptime", func(t *testing.T) {
+		m := NewMetrics()
+		retrieval := &configMockRetrievalService{mode: models.Physical, syncStatus: nil}
+		c := &Collector{metrics: m, retrieval: retrieval, prevCPUStats: make(map[string]containerCPUState)}
+
+		c.collectSyncMetrics(context.Background())
+
+		assert.Equal(t, float64(0), getGaugeValue(m.SyncWALLagSeconds))
+		assert.Equal(t, float64(0), getGaugeValue(m.SyncUptimeSeconds))
+		assert.Equal(t, float64(1), getGaugeVecValue(m.SyncStatus, string(models.SyncStatusNotAvailable)))
+	})
+
+	t.Run("successful collection sets all metrics", func(t *testing.T) {
+		m := NewMetrics()
+		syncStatus := &models.Sync{
+			Status:            models.Status{Code: models.StatusOK},
+			ReplicationLag:    120,
+			ReplicationUptime: 3600,
+			LastReplayedLsnAt: "2025-01-15T10:30:00.123456789Z",
+		}
+		retrieval := &configMockRetrievalService{mode: models.Physical, syncStatus: syncStatus}
+		c := &Collector{metrics: m, retrieval: retrieval, prevCPUStats: make(map[string]containerCPUState)}
+
+		c.collectSyncMetrics(context.Background())
+
+		assert.Equal(t, float64(120), getGaugeValue(m.SyncWALLagSeconds))
+		assert.Equal(t, float64(3600), getGaugeValue(m.SyncUptimeSeconds))
+		assert.Equal(t, float64(1), getGaugeVecValue(m.SyncStatus, "OK"))
+		assert.Greater(t, getGaugeValue(m.SyncLastReplayedAt), float64(0))
+	})
+
+	t.Run("postgres timestamp format is parsed correctly", func(t *testing.T) {
+		m := NewMetrics()
+		syncStatus := &models.Sync{
+			Status:            models.Status{Code: models.StatusOK},
+			ReplicationLag:    60,
+			ReplicationUptime: 1800,
+			LastReplayedLsnAt: "2025-01-15 10:30:00.123456+00",
+		}
+		retrieval := &configMockRetrievalService{mode: models.Physical, syncStatus: syncStatus}
+		c := &Collector{metrics: m, retrieval: retrieval, prevCPUStats: make(map[string]containerCPUState)}
+
+		c.collectSyncMetrics(context.Background())
+
+		assert.Equal(t, float64(60), getGaugeValue(m.SyncWALLagSeconds))
+		assert.Equal(t, float64(1800), getGaugeValue(m.SyncUptimeSeconds))
+		assert.Greater(t, getGaugeValue(m.SyncLastReplayedAt), float64(0))
+	})
+
+	t.Run("empty timestamp leaves metric unchanged", func(t *testing.T) {
+		m := NewMetrics()
+		syncStatus := &models.Sync{
+			Status:            models.Status{Code: models.StatusOK},
+			ReplicationLag:    30,
+			ReplicationUptime: 900,
+			LastReplayedLsnAt: "",
+		}
+		retrieval := &configMockRetrievalService{mode: models.Physical, syncStatus: syncStatus}
+		c := &Collector{metrics: m, retrieval: retrieval, prevCPUStats: make(map[string]containerCPUState)}
+
+		c.collectSyncMetrics(context.Background())
+
+		assert.Equal(t, float64(30), getGaugeValue(m.SyncWALLagSeconds))
+		assert.Equal(t, float64(900), getGaugeValue(m.SyncUptimeSeconds))
+		assert.Equal(t, float64(0), getGaugeValue(m.SyncLastReplayedAt))
+	})
+
+	t.Run("unparseable timestamp leaves metric unchanged", func(t *testing.T) {
+		m := NewMetrics()
+		syncStatus := &models.Sync{
+			Status:            models.Status{Code: models.StatusOK},
+			ReplicationLag:    45,
+			ReplicationUptime: 1200,
+			LastReplayedLsnAt: "invalid-timestamp",
+		}
+		retrieval := &configMockRetrievalService{mode: models.Physical, syncStatus: syncStatus}
+		c := &Collector{metrics: m, retrieval: retrieval, prevCPUStats: make(map[string]containerCPUState)}
+
+		c.collectSyncMetrics(context.Background())
+
+		assert.Equal(t, float64(45), getGaugeValue(m.SyncWALLagSeconds))
+		assert.Equal(t, float64(1200), getGaugeValue(m.SyncUptimeSeconds))
+		assert.Equal(t, float64(0), getGaugeValue(m.SyncLastReplayedAt))
+	})
+}
+
+func getGaugeValue(g prometheus.Gauge) float64 {
+	ch := make(chan prometheus.Metric, 1)
+	g.Collect(ch)
+	select {
+	case m := <-ch:
+		var metric dto.Metric
+		_ = m.Write(&metric)
+		if metric.Gauge != nil {
+			return *metric.Gauge.Value
+		}
+	default:
+	}
+	return 0
+}
+
+func getGaugeVecValue(g *prometheus.GaugeVec, label string) float64 {
+	ch := make(chan prometheus.Metric, 10)
+	g.Collect(ch)
+	close(ch)
+	for m := range ch {
+		var metric dto.Metric
+		_ = m.Write(&metric)
+		for _, lp := range metric.Label {
+			if lp.GetValue() == label && metric.Gauge != nil {
+				return *metric.Gauge.Value
+			}
+		}
+	}
+	return 0
+}
+
+func getCounterValue(c prometheus.Counter) float64 {
+	ch := make(chan prometheus.Metric, 1)
+	c.Collect(ch)
+	select {
+	case m := <-ch:
+		var metric dto.Metric
+		_ = m.Write(&metric)
+		if metric.Counter != nil {
+			return *metric.Counter.Value
+		}
+	default:
+	}
+	return 0
 }
