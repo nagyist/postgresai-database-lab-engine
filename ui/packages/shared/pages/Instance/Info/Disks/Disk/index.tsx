@@ -84,10 +84,14 @@ const getPercent = (value: number, total: number) =>
 export const Disk = (props: Props) => {
   const classes = useStyles()
 
+  // pool-level used space: in shared ZFS pools, usedDataSize reflects only the
+  // dataset, while freeDataSize reflects the entire pool, so we derive the
+  // actual pool usage from totalDataSize - freeDataSize.
+  const usedPoolSize = Math.max(0, props.totalDataSize - props.freeDataSize)
+
   const shouldShowWarning =
     props.status === 'active' &&
-    getPercent(props.usedDataSize, props.totalDataSize) >
-      WARNING_THRESHOLD_PERCENT
+    getPercent(usedPoolSize, props.totalDataSize) > WARNING_THRESHOLD_PERCENT
 
   return (
     <div className={classes.root}>
@@ -154,7 +158,7 @@ export const Disk = (props: Props) => {
       </div>
 
       <ProgressBar
-        value={props.usedDataSize}
+        value={usedPoolSize}
         total={props.totalDataSize}
         thresholdPercent={WARNING_THRESHOLD_PERCENT}
       />
