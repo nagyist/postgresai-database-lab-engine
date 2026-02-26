@@ -1,4 +1,4 @@
-FROM docker:27.1.1
+FROM docker:27.5.1
 
 # Install dependencies.
 RUN apk update && apk add --no-cache bash jq tzdata
