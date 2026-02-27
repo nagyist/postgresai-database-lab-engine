@@ -8,6 +8,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
    1.1. **Entry Points** (`cmd/`)
 2. **Frontend code** (`ui/`)
 
+## Testing Before Pushing
+
+**Always run tests before pushing.** If tests fail, do not push. Fix the failing tests first. Only skip this if the user explicitly says to ignore test failures.
+
 ## Build/Test/Lint Commands
 - Build all components: `cd engine && make build`
 - Lint code: `cd engine && make run-lint`
