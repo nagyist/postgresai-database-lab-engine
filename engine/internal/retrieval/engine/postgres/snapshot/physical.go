@@ -114,6 +114,7 @@ type PhysicalOptions struct {
 	SkipStartSnapshot   bool              `yaml:"skipStartSnapshot"`
 	Promotion           Promotion         `yaml:"promotion"`
 	PreprocessingScript string            `yaml:"preprocessingScript"`
+	DatabaseRename      map[string]string `yaml:"databaseRename"`
 	Configs             map[string]string `yaml:"configs"`
 	Sysctls             map[string]string `yaml:"sysctls"`
 	Envs                map[string]string `yaml:"envs"`
@@ -318,6 +319,12 @@ func (p *PhysicalInitial) run(ctx context.Context) (err error) {
 	default:
 	}
 
+	if len(p.options.DatabaseRename) > 0 {
+		if err := validateDatabaseRenames(p.options.DatabaseRename, p.globalCfg.Database.Name()); err != nil {
+			return fmt.Errorf("invalid database rename configuration: %w", err)
+		}
+	}
+
 	p.dbMark.DataStateAt = extractDataStateAt(p.dbMarker)
 
 	// Snapshot data.
@@ -385,6 +392,18 @@ func (p *PhysicalInitial) run(ctx context.Context) (err error) {
 	if p.options.PreprocessingScript != "" {
 		if err := runPreprocessingScript(p.options.PreprocessingScript); err != nil {
 			return err
+		}
+	}
+
+	if !p.options.Promotion.Enabled && len(p.options.DatabaseRename) > 0 {
+		if err := runDatabaseRename(ctx, renameParams{
+			dockerClient: p.dockerClient,
+			engineProps:  p.engineProps,
+			globalCfg:    p.globalCfg,
+			dataDir:      cloneDataDir,
+			renames:      p.options.DatabaseRename,
+		}); err != nil {
+			return errors.Wrap(err, "failed to rename databases")
 		}
 	}
 
@@ -693,6 +712,16 @@ func (p *PhysicalInitial) promoteInstance(ctx context.Context, clonePath string,
 	if p.queryProcessor != nil {
 		if err := p.queryProcessor.ApplyPreprocessingQueries(ctx, containerID); err != nil {
 			return errors.Wrap(err, "failed to run preprocessing queries")
+		}
+	}
+
+	if len(p.options.DatabaseRename) > 0 {
+		if err := executeDatabaseRenames(
+			ctx, p.dockerClient, containerID,
+			p.globalCfg.Database.User(), p.globalCfg.Database.Name(),
+			p.options.DatabaseRename,
+		); err != nil {
+			return fmt.Errorf("failed to rename databases: %w", err)
 		}
 	}
 

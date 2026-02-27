@@ -106,6 +106,7 @@ Read more:
 - Data provisioning & retrieval
     - Physical (pg_basebackup, WAL-G, pgBackRest) and logical (dump/restore) provisioning
     - Partial data retrieval in logical mode (specific databases/tables)
+    - Database renaming during snapshot creation (`databaseRename` option)
     - Continuous update in physical mode
     - Periodic full refresh in logical mode without downtime
 - Recovery & management
