@@ -63,6 +63,7 @@ type LogicalInitial struct {
 type LogicalOptions struct {
 	DataPatching        DataPatching      `yaml:"dataPatching"`
 	PreprocessingScript string            `yaml:"preprocessingScript"`
+	DatabaseRename      map[string]string `yaml:"databaseRename"`
 	Configs             map[string]string `yaml:"configs"`
 	Schedule            Scheduler         `yaml:"schedule"`
 }
@@ -121,6 +122,12 @@ func (s *LogicalInitial) ReportActivity(_ context.Context) (*activity.Activity, 
 
 // Run starts the job.
 func (s *LogicalInitial) Run(ctx context.Context) error {
+	if len(s.options.DatabaseRename) > 0 {
+		if err := validateDatabaseRenames(s.options.DatabaseRename, s.globalCfg.Database.Name()); err != nil {
+			return fmt.Errorf("invalid database rename configuration: %w", err)
+		}
+	}
+
 	if s.options.PreprocessingScript != "" {
 		if err := runPreprocessingScript(s.options.PreprocessingScript); err != nil {
 			return err
@@ -144,7 +151,7 @@ func (s *LogicalInitial) Run(ctx context.Context) error {
 		return errors.Wrap(err, "failed to store PostgreSQL configs for the snapshot")
 	}
 
-	if s.queryProcessor != nil {
+	if s.queryProcessor != nil || len(s.options.DatabaseRename) > 0 {
 		if err := s.runPreprocessingQueries(ctx, dataDir); err != nil {
 			return errors.Wrap(err, "failed to run preprocessing queries")
 		}
@@ -265,8 +272,20 @@ func (s *LogicalInitial) runPreprocessingQueries(ctx context.Context, dataDir st
 		return errors.Wrap(err, "failed to readiness check")
 	}
 
-	if err := s.queryProcessor.ApplyPreprocessingQueries(ctx, containerID); err != nil {
-		return errors.Wrap(err, "failed to run preprocessing queries")
+	if s.queryProcessor != nil {
+		if err := s.queryProcessor.ApplyPreprocessingQueries(ctx, containerID); err != nil {
+			return errors.Wrap(err, "failed to run preprocessing queries")
+		}
+	}
+
+	if len(s.options.DatabaseRename) > 0 {
+		if err := executeDatabaseRenames(
+			ctx, s.dockerClient, containerID,
+			s.globalCfg.Database.User(), s.globalCfg.Database.Name(),
+			s.options.DatabaseRename,
+		); err != nil {
+			return fmt.Errorf("failed to rename databases: %w", err)
+		}
 	}
 
 	if err := tools.RunCheckpoint(ctx, s.dockerClient, containerID, s.globalCfg.Database.User(), s.globalCfg.Database.Name()); err != nil {
