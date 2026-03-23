@@ -16,6 +16,7 @@ import (
 	"gitlab.com/postgres-ai/database-lab/v3/cmd/cli/commands/global"
 	"gitlab.com/postgres-ai/database-lab/v3/cmd/cli/commands/instance"
 	"gitlab.com/postgres-ai/database-lab/v3/cmd/cli/commands/snapshot"
+	"gitlab.com/postgres-ai/database-lab/v3/cmd/cli/commands/teleport"
 	"gitlab.com/postgres-ai/database-lab/v3/cmd/cli/templates"
 	dblabLog "gitlab.com/postgres-ai/database-lab/v3/pkg/log"
 	"gitlab.com/postgres-ai/database-lab/v3/version"
@@ -39,6 +40,7 @@ func main() {
 			clone.CommandList(),
 			instance.CommandList(),
 			snapshot.CommandList(),
+			teleport.CommandList(),
 
 			// CLI config.
 			config.CommandList(),
