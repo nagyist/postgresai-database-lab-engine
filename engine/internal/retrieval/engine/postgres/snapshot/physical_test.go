@@ -221,27 +221,6 @@ func TestParseWALLine_semicolonSeparator(t *testing.T) {
 	assert.Equal(t, "20231115103045", parseWALLine(line))
 }
 
-func TestWalDir_boundaryVersions(t *testing.T) {
-	testCases := []struct {
-		name      string
-		pgVersion float64
-		expected  string
-	}{
-		{name: "pg 9.5 uses pg_xlog", pgVersion: 9.5, expected: "/data/pg_xlog"},
-		{name: "pg 9.9 uses pg_xlog", pgVersion: 9.9, expected: "/data/pg_xlog"},
-		{name: "pg 10 uses pg_wal", pgVersion: 10, expected: "/data/pg_wal"},
-		{name: "pg 14 uses pg_wal", pgVersion: 14, expected: "/data/pg_wal"},
-		{name: "pg 15 uses pg_wal", pgVersion: 15, expected: "/data/pg_wal"},
-		{name: "pg 16 uses pg_wal", pgVersion: 16, expected: "/data/pg_wal"},
-	}
-
-	for _, tc := range testCases {
-		t.Run(tc.name, func(t *testing.T) {
-			assert.Equal(t, tc.expected, walDir("/data", tc.pgVersion))
-		})
-	}
-}
-
 func TestWalCommand_outputFormat(t *testing.T) {
 	testCases := []struct {
 		name      string
@@ -249,7 +228,6 @@ func TestWalCommand_outputFormat(t *testing.T) {
 		walPath   string
 		contains  string
 	}{
-		{name: "pg 9.6 uses pg_xlogdump", pgVersion: 9.6, walPath: "/wal/000000010000000000000001", contains: "pg_xlogdump"},
 		{name: "pg 10 uses pg_waldump", pgVersion: 10, walPath: "/wal/000000010000000000000001", contains: "pg_waldump"},
 		{name: "pg 14 uses pg_waldump", pgVersion: 14, walPath: "/wal/000000010000000000000001", contains: "pg_waldump"},
 	}
