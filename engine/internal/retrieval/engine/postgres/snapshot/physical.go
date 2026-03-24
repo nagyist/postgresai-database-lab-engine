@@ -67,8 +67,7 @@ const (
 	promoteTargetAction  = "promote"
 
 	// WAL parsing constants.
-	walNameLen  = 24
-	pgVersion10 = 10
+	walNameLen = 24
 
 	logDirName              = "log"
 	defaultLogRetentionDays = 7
@@ -775,7 +774,7 @@ func (p *PhysicalInitial) getDSAFromWAL(ctx context.Context, pgVersion float64, 
 ) {
 	log.Dbg(cloneDir)
 
-	walDirectory := walDir(cloneDir, pgVersion)
+	walDirectory := walDir(cloneDir)
 
 	output, err := tools.ExecCommandWithOutput(ctx, p.dockerClient, containerID, container.ExecOptions{
 		Cmd: []string{"ls", "-t", walDirectory},
@@ -808,14 +807,8 @@ func (p *PhysicalInitial) getDSAFromWAL(ctx context.Context, pgVersion float64, 
 	return "", nil
 }
 
-func walDir(cloneDir string, pgVersion float64) string {
-	dir := "pg_wal"
-
-	if pgVersion < pgVersion10 {
-		dir = "pg_xlog"
-	}
-
-	return path.Join(cloneDir, dir)
+func walDir(cloneDir string) string {
+	return path.Join(cloneDir, "pg_wal")
 }
 
 func (p *PhysicalInitial) parseWAL(
@@ -844,13 +837,7 @@ func (p *PhysicalInitial) parseWAL(
 }
 
 func walCommand(pgVersion float64, walFilePath string) string {
-	walDumpUtil := "pg_waldump"
-
-	if pgVersion < pgVersion10 {
-		walDumpUtil = "pg_xlogdump"
-	}
-
-	return fmt.Sprintf("/usr/lib/postgresql/%g/bin/%s %s -r Transaction | tail -1", pgVersion, walDumpUtil, walFilePath)
+	return fmt.Sprintf("/usr/lib/postgresql/%g/bin/pg_waldump %s -r Transaction | tail -1", pgVersion, walFilePath)
 }
 
 func parseWALLine(line string) string {

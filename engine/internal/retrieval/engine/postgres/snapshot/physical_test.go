@@ -51,42 +51,8 @@ Minimum recovery ending location:     0/0
 func TestWalDir(t *testing.T) {
 	log.SetDebug(false)
 
-	testCases := []struct {
-		pgVersion      float64
-		cloneDir       string
-		expectedWalDir string
-	}{
-		{
-			pgVersion:      9.6,
-			cloneDir:       "/tmp",
-			expectedWalDir: "/tmp/pg_xlog",
-		},
-		{
-			pgVersion:      10,
-			cloneDir:       "/tmp",
-			expectedWalDir: "/tmp/pg_wal",
-		},
-		{
-			pgVersion:      11,
-			cloneDir:       "/tmp",
-			expectedWalDir: "/tmp/pg_wal",
-		},
-		{
-			pgVersion:      12,
-			cloneDir:       "/tmp",
-			expectedWalDir: "/tmp/pg_wal",
-		},
-		{
-			pgVersion:      13,
-			cloneDir:       "/tmp",
-			expectedWalDir: "/tmp/pg_wal",
-		},
-	}
-
-	for _, tc := range testCases {
-		resultDir := walDir(tc.cloneDir, tc.pgVersion)
-		assert.EqualValues(t, tc.expectedWalDir, resultDir)
-	}
+	assert.EqualValues(t, "/tmp/pg_wal", walDir("/tmp"))
+	assert.EqualValues(t, "/data/pg_wal", walDir("/data"))
 }
 
 func TestWalCommand(t *testing.T) {
@@ -97,11 +63,6 @@ func TestWalCommand(t *testing.T) {
 		walName            string
 		expectedWalCommand string
 	}{
-		{
-			pgVersion:          9.6,
-			walName:            "000000010000000000000002",
-			expectedWalCommand: "/usr/lib/postgresql/9.6/bin/pg_xlogdump 000000010000000000000002 -r Transaction | tail -1",
-		},
 		{
 			pgVersion:          10,
 			walName:            "000000010000000000000002",

@@ -20,22 +20,6 @@ import (
 )
 
 const (
-	pgVersion10 = 100000
-
-	serverVersionQuery = `select current_setting('server_version_num')::int`
-
-	lag9xQuery = `
-		SELECT
-		  CASE WHEN pg_is_in_recovery() THEN (
-			SELECT
-			  CASE WHEN pg_last_xlog_receive_location() = pg_last_xlog_replay_location() THEN 0
-			  ELSE
-				coalesce(round(date_part('epoch', now() - pg_last_xact_replay_timestamp())::int8, 0), 0)
-			  END)
-		  ELSE 0
-		  END lag_sec;
-	`
-
 	lagQuery = `
 		SELECT
 		  CASE WHEN pg_is_in_recovery() THEN (
@@ -46,13 +30,6 @@ const (
 			  END)
 		  ELSE 0
 		  END lag_sec;
-	`
-
-	lastReplayedLsn9xQuery = `
-		SELECT
-		  pg_last_xact_replay_timestamp(),
-		  pg_last_xlog_replay_location()
-		;
 	`
 
 	lastReplayedLsnQuery = `
@@ -94,31 +71,14 @@ func FetchSyncMetrics(ctx context.Context, config *global.Config, socketPath str
 		return &sync, fmt.Errorf("can't db connection %w", err)
 	}
 
-	pgVersion, err := version(ctx, conn)
-	if err != nil {
-		return &sync, fmt.Errorf("failed to read Postgres version %w", err)
-	}
-
-	var query = lag9xQuery
-
-	if pgVersion >= pgVersion10 {
-		query = lagQuery
-	}
-
-	replicationLag, err := lag(ctx, conn, query)
+	replicationLag, err := lag(ctx, conn)
 	if err != nil {
 		log.Warn("Failed to fetch replication lag", err)
 	} else {
 		sync.ReplicationLag = replicationLag
 	}
 
-	query = lastReplayedLsn9xQuery
-
-	if pgVersion >= pgVersion10 {
-		query = lastReplayedLsnQuery
-	}
-
-	lastReplayedLsnAt, replayedLsn, err := lastReplayedLsn(ctx, conn, query)
+	lastReplayedLsnAt, replayedLsn, err := lastReplayedLsn(ctx, conn)
 	if err != nil {
 		log.Warn("Failed to fetch last replayed lsn", err)
 	} else {
@@ -152,22 +112,10 @@ func openConnection(ctx context.Context, username, dbname, socketPath string) (*
 	return conn, nil
 }
 
-func version(ctx context.Context, conn *pgx.Conn) (int, error) {
-	var pgVersion int
-
-	row := conn.QueryRow(ctx, serverVersionQuery)
-
-	if err := row.Scan(&pgVersion); err != nil {
-		return 0, fmt.Errorf("failed to read postgres version: %w", err)
-	}
-
-	return pgVersion, nil
-}
-
-func lag(ctx context.Context, conn *pgx.Conn, query string) (int, error) {
+func lag(ctx context.Context, conn *pgx.Conn) (int, error) {
 	var lagSec int
 
-	row := conn.QueryRow(ctx, query)
+	row := conn.QueryRow(ctx, lagQuery)
 
 	if err := row.Scan(&lagSec); err != nil {
 		return 0, fmt.Errorf("failed to read replication lag: %w", err)
@@ -176,10 +124,10 @@ func lag(ctx context.Context, conn *pgx.Conn, query string) (int, error) {
 	return lagSec, nil
 }
 
-func lastReplayedLsn(ctx context.Context, conn *pgx.Conn, query string) (string, string, error) {
+func lastReplayedLsn(ctx context.Context, conn *pgx.Conn) (string, string, error) {
 	var timestamp, location sql.NullString
 
-	row := conn.QueryRow(ctx, query)
+	row := conn.QueryRow(ctx, lastReplayedLsnQuery)
 
 	if err := row.Scan(&timestamp, &location); err != nil {
 		return "", "", fmt.Errorf("failed to read lsn data: %w", err)

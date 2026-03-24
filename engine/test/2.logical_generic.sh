@@ -112,15 +112,6 @@ yq eval -i '
 
 SHARED_PRELOAD_LIBRARIES="pg_stat_statements, auto_explain, pgaudit, logerrors, pg_stat_kcache"
 
-# Edit the following options for PostgreSQL 9.6
-if [ "${POSTGRES_VERSION}" = "9.6" ]; then
-  yq eval -i '
-  .databaseConfigs.configs.log_directory = "log"
-  ' "${configDir}/server.yml"
-
-  SHARED_PRELOAD_LIBRARIES="pg_stat_statements, auto_explain"
-fi
-
 # Edit the following options for PostgreSQL 15
 if [ "${POSTGRES_VERSION}" = "15" ]; then
   SHARED_PRELOAD_LIBRARIES="pg_stat_statements, auto_explain, logerrors, pg_stat_kcache"

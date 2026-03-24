@@ -572,11 +572,6 @@ bash-test-18:
     POSTGRES_VERSION: 18
 
 # Main branch jobs - full matrix (all PostgreSQL versions)
-bash-test-main-9-6:
-  <<: *bash_test_main
-  variables:
-    POSTGRES_VERSION: "9.6"
-
 bash-test-main-10:
   <<: *bash_test_main
   variables:

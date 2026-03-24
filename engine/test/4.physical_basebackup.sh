@@ -60,17 +60,6 @@ if [[ "${SOURCE_HOST}" = "172.17.0.1" ]]; then
   # reload conf
   sudo docker exec postgres"${POSTGRES_VERSION}" psql -U postgres -c 'select pg_reload_conf()'
 
-  # Change wal_level and max_wal_senders parameters for PostgreSQL 9.6
-  if [[ "${POSTGRES_VERSION}" = "9.6" ]]; then
-    sudo docker exec postgres"${POSTGRES_VERSION}" psql -U postgres -c 'ALTER SYSTEM SET wal_level = replica'
-    sudo docker exec postgres"${POSTGRES_VERSION}" psql -U postgres -c 'ALTER SYSTEM SET max_wal_senders = 10'
-    sudo docker restart postgres"${POSTGRES_VERSION}"
-    for i in {1..300}; do
-      sudo docker exec postgres"${POSTGRES_VERSION}" psql -U postgres -c 'select' > /dev/null 2>&1  && break || echo "test database is not ready yet"
-      sleep 1
-    done
-  fi
-
   check_data_existence(){
     sudo docker exec postgres"${POSTGRES_VERSION}" psql -d test -U postgres --command 'select from pgbench_accounts' > /dev/null 2>&1
     return $?
@@ -126,16 +115,6 @@ yq eval -i '
   .retrieval.spec.physicalRestore.options.envs.PGPORT = env(SOURCE_PORT) |
   .retrieval.spec.physicalRestore.options.customTool.command = "pg_basebackup -X stream -D " + strenv(DLE_TEST_MOUNT_DIR) + "/" + strenv(DLE_TEST_POOL_NAME) + "/data"
 ' "${configDir}/server.yml"
-
-# Edit the following options for PostgreSQL 9.6
-if [ "${POSTGRES_VERSION}" = "9.6" ]; then
-  yq eval -i '
-  .databaseConfigs.configs.shared_preload_libraries = "pg_stat_statements, auto_explain" |
-  .databaseConfigs.configs.log_directory = "log" |
-  .retrieval.spec.physicalRestore.options.sync.configs.log_directory = "log" |
-  .retrieval.spec.physicalSnapshot.options.promotion.configs.log_directory = "log"
-  ' "${configDir}/server.yml"
-fi
 
 # Edit the following options for PostgreSQL 15
 if [ "${POSTGRES_VERSION}" = "15" ]; then
