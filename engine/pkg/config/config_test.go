@@ -74,16 +74,70 @@ func (s *ConfigSuite) TestGenerateNewID() {
 }
 
 func (s *ConfigSuite) TestLoadInstanceID() {
-	instanceID := xid.New().String()
+	expected := xid.New().String()
 
 	instanceIDPath, err := util.GetMetaPath("instance_id")
 	s.Require().NoError(err)
 	err = os.MkdirAll(path.Dir(instanceIDPath), 0755)
 	s.Require().NoError(err)
-	err = os.WriteFile(instanceIDPath, []byte(instanceID), 0600)
+	err = os.WriteFile(instanceIDPath, []byte(expected), 0600)
 	s.Require().NoError(err)
 
-	instanceID, err = LoadInstanceID()
+	loaded, err := LoadInstanceID()
 	s.Require().NoError(err)
-	s.Equal(instanceID, instanceID)
+	s.Equal(expected, loaded)
+}
+
+func (s *ConfigSuite) TestLoadInstanceIDMissingFile() {
+	loaded, err := LoadInstanceID()
+	s.Require().NoError(err)
+	s.NotEmpty(loaded)
+
+	instanceIDPath, err := util.GetMetaPath("instance_id")
+	s.Require().NoError(err)
+	data, err := os.ReadFile(instanceIDPath)
+	s.Require().NoError(err)
+	s.Equal(loaded, string(data))
+}
+
+func (s *ConfigSuite) TestLoadInstanceIDEmptyFile() {
+	instanceIDPath, err := util.GetMetaPath("instance_id")
+	s.Require().NoError(err)
+	s.Require().NoError(os.MkdirAll(path.Dir(instanceIDPath), 0755))
+	s.Require().NoError(os.WriteFile(instanceIDPath, []byte{}, 0600))
+
+	loaded, err := LoadInstanceID()
+	s.Require().NoError(err)
+	s.Empty(loaded)
+}
+
+func (s *ConfigSuite) TestGetConfigBytes() {
+	b, err := GetConfigBytes()
+	s.Require().NoError(err)
+	s.NotEmpty(b)
+	s.Contains(string(b), "retrieval")
+}
+
+func (s *ConfigSuite) TestRotateConfig() {
+	original, err := GetConfigBytes()
+	s.Require().NoError(err)
+
+	newContent := []byte("server:\n  port: 9999\n")
+	err = RotateConfig(newContent)
+	s.Require().NoError(err)
+
+	updated, err := GetConfigBytes()
+	s.Require().NoError(err)
+	s.Equal(newContent, updated)
+
+	configPath, err := util.GetConfigPath("server.yml")
+	s.Require().NoError(err)
+
+	matches, err := filepath.Glob(configPath + "*.bak")
+	s.Require().NoError(err)
+	s.NotEmpty(matches, "backup file should be created")
+
+	backupData, err := os.ReadFile(matches[0])
+	s.Require().NoError(err)
+	s.Equal(original, backupData)
 }

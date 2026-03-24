@@ -103,8 +103,12 @@ func ListVolumes(r runners.Runner, lv string) ([]ListEntry, error) {
 		return nil, errors.Wrap(err, "failed to list volumes")
 	}
 
+	return parseLVMOutput(out)
+}
+
+func parseLVMOutput(out string) ([]ListEntry, error) {
 	lvsOutput := &LvsOutput{}
-	if err = json.Unmarshal([]byte(out), lvsOutput); err != nil {
+	if err := json.Unmarshal([]byte(out), lvsOutput); err != nil {
 		return nil, errors.Wrapf(err, "failed to unmarshal json: %s", out)
 	}
 

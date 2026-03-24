@@ -3,6 +3,7 @@
 .env
 
 engine/bin/
+engine/coverage.out
 /db-lab-run/
 
 # Deploy contains Kubernetes configs with secrets, remove from .gitignore when generalized.

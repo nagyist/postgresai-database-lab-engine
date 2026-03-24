@@ -15,8 +15,257 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"gitlab.com/postgres-ai/database-lab/v3/internal/provision/resources"
 	"gitlab.com/postgres-ai/database-lab/v3/pkg/config/global"
 )
+
+func TestDumpJobValidate(t *testing.T) {
+	testCases := []struct {
+		name    string
+		job     DumpJob
+		wantErr bool
+	}{
+		{
+			name:    "restore disabled with parallel jobs",
+			job:     DumpJob{DumpOptions: DumpOptions{Restore: ImmediateRestore{Enabled: false}, ParallelJobs: 4}},
+			wantErr: false,
+		},
+		{
+			name:    "restore enabled with single job",
+			job:     DumpJob{DumpOptions: DumpOptions{Restore: ImmediateRestore{Enabled: true}, ParallelJobs: 1}},
+			wantErr: false,
+		},
+		{
+			name:    "restore enabled with parallel jobs",
+			job:     DumpJob{DumpOptions: DumpOptions{Restore: ImmediateRestore{Enabled: true}, ParallelJobs: 4}},
+			wantErr: true,
+		},
+		{
+			name:    "restore disabled with zero jobs",
+			job:     DumpJob{DumpOptions: DumpOptions{Restore: ImmediateRestore{Enabled: false}, ParallelJobs: 0}},
+			wantErr: false,
+		},
+		{
+			name:    "restore enabled with zero jobs",
+			job:     DumpJob{DumpOptions: DumpOptions{Restore: ImmediateRestore{Enabled: true}, ParallelJobs: 0}},
+			wantErr: false,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := tc.job.validate()
+			if tc.wantErr {
+				assert.Error(t, err)
+				assert.Contains(t, err.Error(), "parallel backup not supported")
+			} else {
+				assert.NoError(t, err)
+			}
+		})
+	}
+}
+
+func TestDumpJobSetDefaults(t *testing.T) {
+	testCases := []struct {
+		name             string
+		opts             DumpOptions
+		expectedPort     int
+		expectedUsername string
+		expectedJobs     int
+	}{
+		{
+			name:             "all zeros use defaults",
+			opts:             DumpOptions{},
+			expectedPort:     5432,
+			expectedUsername: "postgres",
+			expectedJobs:     1,
+		},
+		{
+			name:             "custom values preserved",
+			opts:             DumpOptions{Source: Source{Connection: Connection{Port: 9999, Username: "admin"}}, ParallelJobs: 8},
+			expectedPort:     9999,
+			expectedUsername: "admin",
+			expectedJobs:     8,
+		},
+		{
+			name:             "partial defaults applied",
+			opts:             DumpOptions{Source: Source{Connection: Connection{Port: 3333}}, ParallelJobs: 0},
+			expectedPort:     3333,
+			expectedUsername: "postgres",
+			expectedJobs:     1,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			job := &DumpJob{DumpOptions: tc.opts}
+			job.setDefaults()
+
+			assert.Equal(t, tc.expectedPort, job.DumpOptions.Source.Connection.Port)
+			assert.Equal(t, tc.expectedUsername, job.DumpOptions.Source.Connection.Username)
+			assert.Equal(t, tc.expectedJobs, job.DumpOptions.ParallelJobs)
+			assert.Equal(t, job.DumpOptions.Source.Connection, job.config.db)
+		})
+	}
+}
+
+func TestDumpJobContainerName(t *testing.T) {
+	job := &DumpJob{engineProps: &global.EngineProps{InstanceID: "abc123"}}
+	assert.Equal(t, "dblab_ld_abc123", job.dumpContainerName())
+
+	job.engineProps.InstanceID = ""
+	assert.Equal(t, "dblab_ld_", job.dumpContainerName())
+}
+
+func TestDumpJobGetContainerNetworkMode(t *testing.T) {
+	testCases := []struct {
+		name       string
+		sourceType string
+		expected   string
+	}{
+		{name: "local source uses host mode", sourceType: "local", expected: "host"},
+		{name: "remote source uses default mode", sourceType: "remote", expected: "default"},
+		{name: "rds source uses default mode", sourceType: "rdsIam", expected: "default"},
+		{name: "empty source uses default mode", sourceType: "", expected: "default"},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			job := &DumpJob{DumpOptions: DumpOptions{Source: Source{Type: tc.sourceType}}}
+			assert.Equal(t, tc.expected, string(job.getContainerNetworkMode()))
+		})
+	}
+}
+
+func TestRestoreJobSetDefaults(t *testing.T) {
+	t.Run("zero parallel jobs defaults to 1", func(t *testing.T) {
+		job := &RestoreJob{RestoreOptions: RestoreOptions{ParallelJobs: 0}}
+		job.setDefaults()
+		assert.Equal(t, 1, job.ParallelJobs)
+	})
+
+	t.Run("nonzero parallel jobs preserved", func(t *testing.T) {
+		job := &RestoreJob{RestoreOptions: RestoreOptions{ParallelJobs: 8}}
+		job.setDefaults()
+		assert.Equal(t, 8, job.ParallelJobs)
+	})
+}
+
+func TestRestoreJobContainerName(t *testing.T) {
+	job := &RestoreJob{engineProps: &global.EngineProps{InstanceID: "xyz789"}}
+	assert.Equal(t, "dblab_lr_xyz789", job.restoreContainerName())
+
+	job.engineProps.InstanceID = ""
+	assert.Equal(t, "dblab_lr_", job.restoreContainerName())
+}
+
+func TestDumpJobGetEnvironmentVariables(t *testing.T) {
+	testCases := []struct {
+		name           string
+		opts           DumpOptions
+		dataDir        string
+		password       string
+		expectContains []string
+		expectNoPGPORT bool
+	}{
+		{
+			name:     "restore disabled uses tmp pgdata",
+			opts:     DumpOptions{Restore: ImmediateRestore{Enabled: false}},
+			dataDir:  "/data/pgdata",
+			password: "secret",
+			expectContains: []string{
+				"POSTGRES_PASSWORD=secret",
+				"PGDATA=/tmp/dblab_dump",
+			},
+		},
+		{
+			name:     "restore enabled uses pool data dir",
+			opts:     DumpOptions{Restore: ImmediateRestore{Enabled: true}},
+			dataDir:  "/data/pgdata",
+			password: "pw123",
+			expectContains: []string{
+				"POSTGRES_PASSWORD=pw123",
+				"PGDATA=/data/pgdata",
+			},
+		},
+		{
+			name: "local source with default port adds reserve port",
+			opts: DumpOptions{
+				Source:  Source{Type: "local", Connection: Connection{Port: 5432}},
+				Restore: ImmediateRestore{Enabled: false},
+			},
+			dataDir:  "/data",
+			password: "pw",
+			expectContains: []string{
+				"PGPORT=9999",
+			},
+		},
+		{
+			name: "local source with non-default port skips reserve port",
+			opts: DumpOptions{
+				Source:  Source{Type: "local", Connection: Connection{Port: 6543}},
+				Restore: ImmediateRestore{Enabled: false},
+			},
+			dataDir:        "/data",
+			password:       "pw",
+			expectNoPGPORT: true,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			pool := &resources.Pool{DataSubDir: tc.dataDir}
+			job := &DumpJob{DumpOptions: tc.opts, fsPool: pool}
+			envs := job.getEnvironmentVariables(tc.password)
+
+			for _, expected := range tc.expectContains {
+				assert.Contains(t, envs, expected)
+			}
+
+			if tc.expectNoPGPORT {
+				for _, env := range envs {
+					assert.NotContains(t, env, "PGPORT=")
+				}
+			}
+		})
+	}
+}
+
+func TestDumpJobSetupDumper(t *testing.T) {
+	testCases := []struct {
+		name       string
+		sourceType string
+		wantErr    bool
+		dumperType string
+	}{
+		{name: "empty source type", sourceType: "", wantErr: false, dumperType: "defaultDumper"},
+		{name: "local source type", sourceType: "local", wantErr: false, dumperType: "defaultDumper"},
+		{name: "remote source type", sourceType: "remote", wantErr: false, dumperType: "defaultDumper"},
+		{name: "rds without config", sourceType: "rdsIam", wantErr: true},
+		{name: "unknown source type", sourceType: "unknown", wantErr: true},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			job := &DumpJob{DumpOptions: DumpOptions{Source: Source{Type: tc.sourceType}}}
+			err := job.setupDumper()
+			if tc.wantErr {
+				assert.Error(t, err)
+				return
+			}
+
+			assert.NoError(t, err)
+			require.NotNil(t, job.dumper)
+
+			switch tc.dumperType {
+			case "defaultDumper":
+				assert.IsType(t, &defaultDumper{}, job.dumper)
+			case "rdsDumper":
+				assert.IsType(t, &rdsDumper{}, job.dumper)
+			}
+		})
+	}
+}
 
 func TestRestoreCommandBuilding(t *testing.T) {
 	logicalJob := &RestoreJob{

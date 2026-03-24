@@ -69,9 +69,22 @@ type tuningParam struct {
 	setting string
 }
 
+// EscapeLibpqValue escapes a value for use in a libpq connection string
+// by doubling backslashes and single quotes.
+func EscapeLibpqValue(val string) string {
+	val = strings.ReplaceAll(val, `\`, `\\`)
+	val = strings.ReplaceAll(val, "'", "''")
+
+	return val
+}
+
 // ConnectionString builds PostgreSQL connection string.
 func ConnectionString(host, port, username, dbname, password string) string {
-	return fmt.Sprintf("host=%s port=%s user='%s' database='%s' password='%s'", host, port, username, dbname, password)
+	return fmt.Sprintf("host='%s' port=%s user='%s' database='%s' password='%s'",
+		EscapeLibpqValue(host), port,
+		EscapeLibpqValue(username),
+		EscapeLibpqValue(dbname),
+		EscapeLibpqValue(password))
 }
 
 // GetDatabaseListQuery provides the query to get the list of databases available for user.

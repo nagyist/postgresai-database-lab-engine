@@ -1,6 +1,8 @@
 package pglog
 
 import (
+	"os"
+	"path"
 	"testing"
 	"time"
 
@@ -76,4 +78,176 @@ func TestGetPostgresLastActivityWhenFailedParseTime(t *testing.T) {
 		require.Nil(t, lastActivity)
 		assert.EqualError(t, err, tc.errorString)
 	}
+}
+
+func createLogDir(t *testing.T) string {
+	t.Helper()
+
+	dir := t.TempDir()
+	logDir := path.Join(dir, "log")
+	require.NoError(t, os.Mkdir(logDir, 0o755))
+
+	return dir
+}
+
+func createFile(t *testing.T, dir, name string) {
+	t.Helper()
+
+	f, err := os.Create(path.Join(dir, "log", name))
+	require.NoError(t, err)
+	require.NoError(t, f.Close())
+}
+
+func TestSelector_DiscoverLogDir(t *testing.T) {
+	dir := createLogDir(t)
+	createFile(t, dir, "postgresql-2020-01-10_114914.csv")
+	createFile(t, dir, "postgresql-2020-01-11_131058.csv")
+	createFile(t, dir, "postgresql-2020-01-09_080000.csv")
+
+	s := NewSelector(dir)
+	require.NoError(t, s.DiscoverLogDir())
+
+	assert.Equal(t, []string{
+		"postgresql-2020-01-09_080000.csv",
+		"postgresql-2020-01-10_114914.csv",
+		"postgresql-2020-01-11_131058.csv",
+	}, s.fileNames, "files should be sorted alphabetically")
+}
+
+func TestSelector_DiscoverLogDir_EmptyDir(t *testing.T) {
+	dir := createLogDir(t)
+
+	s := NewSelector(dir)
+	err := s.DiscoverLogDir()
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "log files not found")
+}
+
+func TestSelector_DiscoverLogDir_SkipsNonCSV(t *testing.T) {
+	dir := createLogDir(t)
+	createFile(t, dir, "postgresql-2020-01-10_114914.csv")
+	createFile(t, dir, "postgresql-2020-01-10_114914.log")
+	createFile(t, dir, "some-other-file.txt")
+
+	s := NewSelector(dir)
+	require.NoError(t, s.DiscoverLogDir())
+
+	assert.Equal(t, []string{"postgresql-2020-01-10_114914.csv"}, s.fileNames, "only csv files should be discovered")
+}
+
+func TestSelector_DiscoverLogDir_NonexistentDir(t *testing.T) {
+	s := NewSelector("/nonexistent/path")
+	err := s.DiscoverLogDir()
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "failed to read a log directory")
+}
+
+func TestSelector_DiscoverLogDir_SkipsSubdirectories(t *testing.T) {
+	dir := createLogDir(t)
+	createFile(t, dir, "postgresql-2020-01-10_114914.csv")
+	require.NoError(t, os.Mkdir(path.Join(dir, "log", "subdir"), 0o755))
+
+	s := NewSelector(dir)
+	require.NoError(t, s.DiscoverLogDir())
+
+	assert.Equal(t, []string{"postgresql-2020-01-10_114914.csv"}, s.fileNames)
+}
+
+func TestSelector_Next(t *testing.T) {
+	dir := createLogDir(t)
+	createFile(t, dir, "postgresql-2020-01-09_080000.csv")
+	createFile(t, dir, "postgresql-2020-01-10_114914.csv")
+
+	s := NewSelector(dir)
+	require.NoError(t, s.DiscoverLogDir())
+
+	logDir := path.Join(dir, "log")
+
+	first, err := s.Next()
+	require.NoError(t, err)
+	assert.Equal(t, path.Join(logDir, "postgresql-2020-01-09_080000.csv"), first)
+
+	second, err := s.Next()
+	require.NoError(t, err)
+	assert.Equal(t, path.Join(logDir, "postgresql-2020-01-10_114914.csv"), second)
+
+	_, err = s.Next()
+	assert.ErrorIs(t, err, ErrLastFile, "should return ErrLastFile after all files consumed")
+}
+
+func TestSelector_Next_EmptyFileNames(t *testing.T) {
+	s := NewSelector(t.TempDir())
+
+	result, err := s.Next()
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "log fileNames not found")
+	assert.Empty(t, result)
+}
+
+func TestSelector_FilterOldFilesInList(t *testing.T) {
+	testCases := []struct {
+		name        string
+		files       []string
+		minimumTime time.Time
+		expected    []string
+	}{
+		{
+			name:        "filters old files keeping the file before minimum time",
+			files:       []string{"postgresql-2020-01-08_080000.csv", "postgresql-2020-01-09_080000.csv", "postgresql-2020-01-10_114914.csv", "postgresql-2020-01-11_131058.csv"},
+			minimumTime: time.Date(2020, 1, 10, 12, 0, 0, 0, time.UTC),
+			expected:    []string{"postgresql-2020-01-09_080000.csv", "postgresql-2020-01-10_114914.csv", "postgresql-2020-01-11_131058.csv"},
+		},
+		{
+			name:        "zero minimum time keeps all files",
+			files:       []string{"postgresql-2020-01-09_080000.csv", "postgresql-2020-01-10_114914.csv"},
+			minimumTime: time.Time{},
+			expected:    []string{"postgresql-2020-01-09_080000.csv", "postgresql-2020-01-10_114914.csv"},
+		},
+		{
+			name:        "minimum time before all files keeps all",
+			files:       []string{"postgresql-2020-01-09_080000.csv", "postgresql-2020-01-10_114914.csv"},
+			minimumTime: time.Date(2019, 1, 1, 0, 0, 0, 0, time.UTC),
+			expected:    []string{"postgresql-2020-01-09_080000.csv", "postgresql-2020-01-10_114914.csv"},
+		},
+		{
+			name:        "single file is preserved",
+			files:       []string{"postgresql-2020-01-10_114914.csv"},
+			minimumTime: time.Date(2020, 1, 11, 0, 0, 0, 0, time.UTC),
+			expected:    []string{"postgresql-2020-01-10_114914.csv"},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			s := &Selector{fileNames: tc.files}
+			s.SetMinimumTime(tc.minimumTime)
+			s.FilterOldFilesInList()
+			assert.Equal(t, tc.expected, s.fileNames)
+		})
+	}
+}
+
+func TestSelector_SetMinimumTime(t *testing.T) {
+	s := NewSelector("/tmp")
+	minTime := time.Date(2020, 6, 15, 10, 30, 0, 0, time.UTC)
+
+	s.SetMinimumTime(minTime)
+
+	assert.Equal(t, minTime, s.minimumTime)
+}
+
+func TestBuildLogDirName(t *testing.T) {
+	assert.Equal(t, "/data/clone/log", buildLogDirName("/data/clone"))
+	assert.Equal(t, "mydir/log", buildLogDirName("mydir"))
+}
+
+func TestNewSelector(t *testing.T) {
+	s := NewSelector("/data/clone")
+
+	assert.Equal(t, "/data/clone/log", s.logDir)
+	assert.Empty(t, s.fileNames)
+	assert.Equal(t, 0, s.currentIndex)
 }

@@ -105,12 +105,161 @@ func TestPublishPorts(t *testing.T) {
 		expectedResult string
 	}{
 		{provisionHosts: "", instancePort: "6000", expectedResult: "--publish 6000:6000"},
+		{provisionHosts: "", instancePort: "5432", expectedResult: "--publish 5432:5432"},
 		{provisionHosts: "127.0.0.1", instancePort: "6000", expectedResult: "--publish 127.0.0.1:6000:6000"},
 		{provisionHosts: "127.0.0.1,172.0.0.1", instancePort: "6000", expectedResult: "--publish 127.0.0.1:6000:6000 --publish 172.0.0.1:6000:6000"},
 		{provisionHosts: "[::1]", instancePort: "6000", expectedResult: "--publish [::1]:6000:6000"},
+		{provisionHosts: "0.0.0.0", instancePort: "6001", expectedResult: "--publish 0.0.0.0:6001:6001"},
+		{provisionHosts: "10.0.0.1,10.0.0.2,10.0.0.3", instancePort: "6000", expectedResult: "--publish 10.0.0.1:6000:6000 --publish 10.0.0.2:6000:6000 --publish 10.0.0.3:6000:6000"},
 	}
 
 	for _, tc := range testCases {
-		assert.Equal(t, publishPorts(tc.provisionHosts, tc.instancePort), tc.expectedResult)
+		assert.Equal(t, tc.expectedResult, publishPorts(tc.provisionHosts, tc.instancePort))
+	}
+}
+
+func TestBuildSocketMount(t *testing.T) {
+	testCases := []struct {
+		socketDir      string
+		hostDataDir    string
+		destinationDir string
+		expected       string
+	}{
+		{socketDir: "/var/lib/dblab/pool/sockets/clone1", hostDataDir: "/host/dblab", destinationDir: "/var/lib/dblab", expected: "--volume /host/dblab/pool/sockets/clone1:/var/lib/dblab/pool/sockets/clone1:rshared"},
+		{socketDir: "/data/sockets/clone2", hostDataDir: "/mnt/data", destinationDir: "/data", expected: "--volume /mnt/data/sockets/clone2:/data/sockets/clone2:rshared"},
+		{socketDir: "/var/lib/dblab/sockets", hostDataDir: "/var/lib/dblab", destinationDir: "/var/lib/dblab", expected: "--volume /var/lib/dblab/sockets:/var/lib/dblab/sockets:rshared"},
+	}
+
+	for _, tc := range testCases {
+		result := buildSocketMount(tc.socketDir, tc.hostDataDir, tc.destinationDir)
+		assert.Equal(t, tc.expected, result)
+	}
+}
+
+func TestCreateDefaultVolumes_WithCloneName(t *testing.T) {
+	pool := resources.NewPool("testpool")
+	pool.MountDir = "/var/lib/dblab"
+	pool.PoolDirName = "testpool"
+	pool.SocketSubDir = "sockets"
+
+	appConfig := &resources.AppConfig{
+		CloneName: "dblab_clone_6100",
+		Branch:    "main",
+		Revision:  0,
+		Pool:      pool,
+	}
+
+	socketDir, volumes := createDefaultVolumes(appConfig)
+
+	assert.Equal(t, "/var/lib/dblab/testpool/sockets/dblab_clone_6100", socketDir)
+	assert.Len(t, volumes, 2)
+	assert.Contains(t, volumes[1], "dblab_clone_6100")
+}
+
+func TestCreateDefaultVolumes_NonZeroRevision(t *testing.T) {
+	pool := resources.NewPool("pool")
+	pool.MountDir = "/mnt"
+	pool.PoolDirName = "pool"
+	pool.SocketSubDir = "sock"
+	pool.DataSubDir = "data"
+
+	appConfig := &resources.AppConfig{
+		CloneName: "clone1",
+		Branch:    "dev",
+		Revision:  3,
+		Pool:      pool,
+	}
+
+	socketDir, volumes := createDefaultVolumes(appConfig)
+
+	assert.Equal(t, "/mnt/pool/sock/clone1", socketDir)
+	assert.Len(t, volumes, 2)
+	assert.Contains(t, volumes[0], "r3")
+}
+
+func TestVolumesBuilding_NoMountPoints(t *testing.T) {
+	appConfig := &resources.AppConfig{
+		CloneName: "clone1",
+		Branch:    "main",
+		Revision:  0,
+		Pool: &resources.Pool{
+			Name:         "pool",
+			PoolDirName:  "pool",
+			MountDir:     "/var/lib/dblab",
+			DataSubDir:   "data",
+			SocketSubDir: "sockets",
+		},
+	}
+
+	volumes := buildVolumesFromMountPoints(appConfig, nil)
+	assert.Empty(t, volumes)
+}
+
+func TestVolumesBuilding_OnlySystemMounts(t *testing.T) {
+	appConfig := &resources.AppConfig{
+		CloneName: "clone1",
+		Branch:    "main",
+		Revision:  0,
+		Pool: &resources.Pool{
+			Name:         "pool",
+			PoolDirName:  "pool",
+			MountDir:     "/var/lib/dblab",
+			DataSubDir:   "data",
+			SocketSubDir: "sockets",
+		},
+	}
+
+	mountPoints := []container.MountPoint{
+		{Type: "bind", Source: "/sys/kernel/debug", Destination: "/sys/kernel/debug"},
+		{Type: "bind", Source: "/proc", Destination: "/proc"},
+		{Type: "bind", Source: "/lib/modules", Destination: "/lib/modules"},
+	}
+
+	volumes := buildVolumesFromMountPoints(appConfig, mountPoints)
+	assert.Empty(t, volumes)
+}
+
+func TestVolumesBuilding_NonDataMountsFiltered(t *testing.T) {
+	appConfig := &resources.AppConfig{
+		CloneName: "clone1",
+		Branch:    "main",
+		Revision:  0,
+		Pool: &resources.Pool{
+			Name:         "pool",
+			PoolDirName:  "pool",
+			MountDir:     "/var/lib/dblab",
+			DataSubDir:   "data",
+			SocketSubDir: "sockets",
+		},
+	}
+
+	mountPoints := []container.MountPoint{
+		{Type: "bind", Source: "/home/user/.dblab/config.yml", Destination: "/home/dblab/configs/config.yml"},
+		{Type: "bind", Source: "/tmp/logs", Destination: "/tmp/logs"},
+	}
+
+	volumes := buildVolumesFromMountPoints(appConfig, mountPoints)
+	assert.Empty(t, volumes)
+}
+
+func TestSystemVolumes_BoundaryPaths(t *testing.T) {
+	testCases := []struct {
+		path           string
+		expectedSystem bool
+	}{
+		{path: "/sys", expectedSystem: true},
+		{path: "/lib", expectedSystem: true},
+		{path: "/proc", expectedSystem: true},
+		{path: "/sys/fs/cgroup", expectedSystem: true},
+		{path: "/lib/x86_64-linux-gnu", expectedSystem: true},
+		{path: "/proc/1/status", expectedSystem: true},
+		{path: "/var/sys", expectedSystem: false},
+		{path: "/var/lib/dblab", expectedSystem: false},
+		{path: "/home/user", expectedSystem: false},
+		{path: "/opt/data", expectedSystem: false},
+	}
+
+	for _, tc := range testCases {
+		assert.Equal(t, tc.expectedSystem, isSystemVolume(tc.path), "path: %s", tc.path)
 	}
 }

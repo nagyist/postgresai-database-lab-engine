@@ -37,3 +37,59 @@ func TestPgBackRestRestoreCommand(t *testing.T) {
 		"--recovery-option=restore_command='pgbackrest --pg1-path=${PGDATA} --stanza=stanzaName archive-get %f %p' --delta"
 	assert.Equal(t, expectedResponse, restoreCmd)
 }
+
+func TestPgBackRestRestoreCommand_DifferentStanzas(t *testing.T) {
+	testCases := []struct {
+		name     string
+		stanza   string
+		delta    bool
+		hasDelta bool
+	}{
+		{name: "production stanza without delta", stanza: "prod-db", delta: false, hasDelta: false},
+		{name: "production stanza with delta", stanza: "prod-db", delta: true, hasDelta: true},
+		{name: "staging stanza", stanza: "staging", delta: false, hasDelta: false},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			p := newPgBackRest(pgbackrestOptions{Stanza: tc.stanza, Delta: tc.delta})
+			cmd := p.GetRestoreCommand()
+			assert.Contains(t, cmd, "--stanza="+tc.stanza)
+			assert.Contains(t, cmd, "--type=standby")
+			assert.Contains(t, cmd, "--pg1-path=${PGDATA}")
+			if tc.hasDelta {
+				assert.Contains(t, cmd, "--delta")
+			} else {
+				assert.NotContains(t, cmd, "--delta")
+			}
+		})
+	}
+}
+
+func TestPgBackRestRecoveryConfig_VersionBoundary(t *testing.T) {
+	p := newPgBackRest(pgbackrestOptions{Stanza: "mydb"})
+
+	testCases := []struct {
+		name           string
+		version        float64
+		expectTimeline bool
+	}{
+		{name: "pg 9.6", version: 9.6, expectTimeline: true},
+		{name: "pg 11.99", version: 11.99, expectTimeline: true},
+		{name: "pg 12.0 exact", version: 12.0, expectTimeline: false},
+		{name: "pg 14.0", version: 14.0, expectTimeline: false},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg := p.GetRecoveryConfig(tc.version)
+			assert.Contains(t, cfg["restore_command"], "--stanza=mydb")
+			if tc.expectTimeline {
+				assert.Equal(t, "latest", cfg["recovery_target_timeline"])
+			} else {
+				_, exists := cfg["recovery_target_timeline"]
+				assert.False(t, exists)
+			}
+		})
+	}
+}

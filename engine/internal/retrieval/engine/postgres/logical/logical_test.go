@@ -7,6 +7,37 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+func TestBuildAnalyzeCommand(t *testing.T) {
+	testCases := []struct {
+		conn     Connection
+		jobs     int
+		expected []string
+	}{
+		{
+			conn:     Connection{Username: "postgres", DBName: "testdb"},
+			jobs:     1,
+			expected: []string{"vacuumdb", "--analyze", "--jobs", "1", "--username", "postgres", "--all"},
+		},
+		{
+			conn:     Connection{Username: "john", DBName: "mydb"},
+			jobs:     4,
+			expected: []string{"vacuumdb", "--analyze", "--jobs", "4", "--username", "john", "--all"},
+		},
+		{
+			conn:     Connection{Username: "admin"},
+			jobs:     8,
+			expected: []string{"vacuumdb", "--analyze", "--jobs", "8", "--username", "admin", "--all"},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.conn.Username, func(t *testing.T) {
+			result := buildAnalyzeCommand(tc.conn, tc.jobs)
+			assert.Equal(t, tc.expected, result)
+		})
+	}
+}
+
 func TestIsAlreadyMounted(t *testing.T) {
 	testCases := []struct {
 		source         []mount.Mount

@@ -6,9 +6,11 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"gitlab.com/postgres-ai/database-lab/v3/internal/provision"
 	"gitlab.com/postgres-ai/database-lab/v3/internal/telemetry"
+	"gitlab.com/postgres-ai/database-lab/v3/pkg/models"
 )
 
 const (
@@ -104,11 +106,12 @@ func TestLoadingSessionState(t *testing.T) {
 		assert.NoError(t, err)
 
 		t.Run("it should restore valid clone's data", func(t *testing.T) {
-			assert.NotEmpty(t, s.clones)
-			assert.Contains(t, s.clones, "c5bfsk0hmvjd7kau71jg")
-			assert.Equal(t, "east5@snapshot_20211001112229", s.clones["c5bfsk0hmvjd7kau71jg"].Clone.Snapshot.ID)
-			assert.Equal(t, "east5", s.clones["c5bfsk0hmvjd7kau71jg"].Session.Pool)
-			assert.Equal(t, uint(6003), s.clones["c5bfsk0hmvjd7kau71jg"].Session.Port)
+			assert.Equal(t, 1, s.lenClones())
+			w, ok := s.findWrapper("c5bfsk0hmvjd7kau71jg")
+			require.True(t, ok)
+			assert.Equal(t, "east5@snapshot_20211001112229", w.Clone.Snapshot.ID)
+			assert.Equal(t, "east5", w.Session.Pool)
+			assert.Equal(t, uint(6003), w.Session.Port)
 		})
 	})
 }
@@ -131,6 +134,78 @@ func TestSavingSessionState(t *testing.T) {
 
 		assert.Equal(t, "{}", string(data))
 	})
+}
+
+func TestSaveAndLoadRoundTrip(t *testing.T) {
+	tmpDir := t.TempDir()
+	sessionsPath := tmpDir + "/sessions.json"
+
+	prov, err := newProvisioner()
+	require.NoError(t, err)
+
+	base := NewBase(nil, nil, prov, &telemetry.Agent{}, nil, nil)
+	base.setWrapper("clone1", &CloneWrapper{
+		Clone: &models.Clone{
+			ID:       "clone1",
+			Status:   models.Status{Code: models.StatusOK, Message: models.CloneMessageOK},
+			Snapshot: &models.Snapshot{ID: "snap1"},
+			DB:       models.Database{Username: "testuser", DBName: "testdb", Port: "6000", Host: "localhost"},
+		},
+	})
+	base.setWrapper("clone2", &CloneWrapper{
+		Clone: &models.Clone{
+			ID:     "clone2",
+			Status: models.Status{Code: models.StatusCreating, Message: models.CloneMessageCreating},
+		},
+	})
+
+	err = base.saveClonesState(sessionsPath)
+	require.NoError(t, err)
+
+	restored := &Base{}
+	err = restored.loadSessionState(sessionsPath)
+	require.NoError(t, err)
+
+	assert.Equal(t, 2, restored.lenClones())
+
+	w1, ok1 := restored.findWrapper("clone1")
+	require.True(t, ok1)
+
+	w2, ok2 := restored.findWrapper("clone2")
+	require.True(t, ok2)
+
+	assert.Equal(t, "clone1", w1.Clone.ID)
+	assert.Equal(t, "snap1", w1.Clone.Snapshot.ID)
+	assert.Equal(t, "testuser", w1.Clone.DB.Username)
+	assert.Equal(t, models.StatusCreating, w2.Clone.Status.Code)
+}
+
+func TestLoadSessionStateInvalidJSON(t *testing.T) {
+	tmpDir := t.TempDir()
+	sessionsPath := tmpDir + "/sessions.json"
+
+	err := os.WriteFile(sessionsPath, []byte("not valid json"), 0600)
+	require.NoError(t, err)
+
+	base := &Base{}
+	err = base.loadSessionState(sessionsPath)
+	assert.Error(t, err)
+}
+
+func TestSaveClonesStateFilePermissions(t *testing.T) {
+	tmpDir := t.TempDir()
+	sessionsPath := tmpDir + "/sessions.json"
+
+	prov, err := newProvisioner()
+	require.NoError(t, err)
+
+	base := NewBase(nil, nil, prov, &telemetry.Agent{}, nil, nil)
+	err = base.saveClonesState(sessionsPath)
+	require.NoError(t, err)
+
+	info, err := os.Stat(sessionsPath)
+	require.NoError(t, err)
+	assert.Equal(t, os.FileMode(0600), info.Mode().Perm())
 }
 
 func TestFilter(t *testing.T) {
@@ -169,7 +244,7 @@ func TestFilter(t *testing.T) {
 				s := NewBase(nil, nil, prov, &telemetry.Agent{}, nil, nil)
 
 				s.filterRunningClones(context.Background())
-				assert.Equal(t, 0, len(s.clones))
+				assert.Equal(t, 0, s.lenClones())
 			})
 		}
 	})

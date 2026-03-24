@@ -97,3 +97,73 @@ func TestRestrictedUserOwnershipQuery(t *testing.T) {
 		assert.Contains(t, query, `select datname from pg_catalog.pg_database where not datistemplat`)
 	})
 }
+
+func TestSuperuserQuery_CreateVsAlter(t *testing.T) {
+	testCases := []struct {
+		name     string
+		user     string
+		pwd      string
+		exists   bool
+		contains string
+	}{
+		{name: "new user creates", user: "dbadmin", pwd: "pass123", exists: false, contains: "create user"},
+		{name: "existing user alters", user: "dbadmin", pwd: "pass123", exists: true, contains: "alter role"},
+		{name: "both include superuser", user: "admin", pwd: "x", exists: false, contains: "superuser"},
+		{name: "alter also includes superuser", user: "admin", pwd: "x", exists: true, contains: "superuser"},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			result := superuserQuery(tc.user, tc.pwd, tc.exists)
+			assert.Contains(t, result, tc.contains)
+		})
+	}
+}
+
+func TestRestrictedUserQuery_CreateVsAlter(t *testing.T) {
+	testCases := []struct {
+		name     string
+		user     string
+		pwd      string
+		exists   bool
+		contains string
+	}{
+		{name: "new user creates", user: "app", pwd: "secret", exists: false, contains: "create user"},
+		{name: "existing user alters", user: "app", pwd: "secret", exists: true, contains: "alter role"},
+		{name: "both include login", user: "app", pwd: "x", exists: false, contains: "login"},
+		{name: "alter also includes login", user: "app", pwd: "x", exists: true, contains: "login"},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			result := restrictedUserQuery(tc.user, tc.pwd, tc.exists)
+			assert.Contains(t, result, tc.contains)
+		})
+	}
+}
+
+func TestRestrictedUserQuery_DoesNotContainSuperuser(t *testing.T) {
+	assert.NotContains(t, restrictedUserQuery("u", "p", false), "superuser")
+	assert.NotContains(t, restrictedUserQuery("u", "p", true), "superuser")
+}
+
+func TestSuperuserQuery_ContainsLogin(t *testing.T) {
+	assert.Contains(t, superuserQuery("u", "p", false), "login")
+	assert.Contains(t, superuserQuery("u", "p", true), "login")
+}
+
+func TestRestrictedObjectsQuery_ContainsAllObjectTypes(t *testing.T) {
+	query := restrictedObjectsQuery("testuser")
+
+	assert.Contains(t, query, "pg_namespace")
+	assert.Contains(t, query, "pg_type")
+	assert.Contains(t, query, "pg_class")
+	assert.Contains(t, query, "pg_proc")
+	assert.Contains(t, query, "pg_ts_dict")
+}
+
+func TestRestrictedUserOwnershipQuery_ContainsDatabaseIteration(t *testing.T) {
+	query := restrictedUserOwnershipQuery("user1", "pwd")
+	assert.Contains(t, query, "pg_catalog.pg_database")
+	assert.Contains(t, query, "alter database")
+}

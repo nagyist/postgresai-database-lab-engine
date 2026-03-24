@@ -160,6 +160,7 @@ func (d *Cleaner) ScheduleLogCleanupJob(config Config) error {
 
 	d.StopLogCleanupJob()
 
+	d.cleanerCron = cron.New()
 	d.cleanerCron.Schedule(schedule, cron.FuncJob(cleanLogsFunc(logRetentionDays)))
 	d.cleanerCron.Start()
 
