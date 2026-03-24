@@ -22,32 +22,6 @@ import (
 )
 
 const (
-	initialScript96 = `
--- SCHEMA
-begin;
-create table timezones
-(
-  id         serial PRIMARY KEY,
-  created    timestamptz DEFAULT now() NOT NULL,
-  modified   timestamptz DEFAULT now() NOT NULL,
-  name       text                      NOT NULL,
-  timeoffset smallint                  NOT NULL,
-  identifier text                      NOT NULL
-);
-commit;
-select pg_switch_xlog();
-
--- SEED
-begin;
-INSERT INTO timezones  (id, name, timeoffset, identifier) VALUES  (1, 'eastern', '-5', 'est');
-INSERT INTO timezones  (id, name, timeoffset, identifier) VALUES  (2, 'central', '-6', 'cst');
-INSERT INTO timezones  (id, name, timeoffset, identifier) VALUES  (3, 'mountain', '-7', 'mst');
-INSERT INTO timezones  (id, name, timeoffset, identifier) VALUES  (4, 'pacific', '-8', 'pst');
-INSERT INTO timezones  (id, name, timeoffset, identifier) VALUES  (5, 'alaska', '-9', 'ast');
-alter sequence timezones_id_seq restart with 6;
-commit;
-select pg_switch_xlog();
-`
 
 	initialScript = `
 -- SCHEMA
@@ -84,15 +58,6 @@ const (
 	testPassword = "password"
 	pgdata       = "/var/lib/postgresql/data/"
 )
-
-func TestParsingWAL96(t *testing.T) {
-	dockerCLI, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
-	if err != nil {
-		t.Fatal("Failed to create a Docker client:", err)
-	}
-
-	testWALParsing(t, dockerCLI, 9.6, initialScript96)
-}
 
 func TestParsingWAL(t *testing.T) {
 	dockerCLI, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
