@@ -23,6 +23,7 @@ import (
 
 	"gitlab.com/postgres-ai/database-lab/v3/internal/provision"
 	"gitlab.com/postgres-ai/database-lab/v3/internal/provision/resources"
+	"gitlab.com/postgres-ai/database-lab/v3/internal/retrieval/engine/postgres/tools/db"
 	"gitlab.com/postgres-ai/database-lab/v3/internal/telemetry"
 	"gitlab.com/postgres-ai/database-lab/v3/internal/webhooks"
 	"gitlab.com/postgres-ai/database-lab/v3/pkg/client/dblabapi/types"
@@ -308,8 +309,10 @@ func (c *Base) ConnectToClone(ctx context.Context, cloneID string) (pgxtype.Quer
 }
 
 func connectionString(host, port, username, dbname string) string {
-	return fmt.Sprintf("host=%s port=%s user=%s database='%s'",
-		host, port, username, dbname)
+	return fmt.Sprintf("host='%s' port=%s user='%s' database='%s'",
+		db.EscapeLibpqValue(host), port,
+		db.EscapeLibpqValue(username),
+		db.EscapeLibpqValue(dbname))
 }
 
 // DestroyClone destroys clone.
@@ -749,6 +752,12 @@ func (c *Base) setWrapper(id string, wrapper *CloneWrapper) {
 func (c *Base) deleteClone(cloneID string) {
 	c.cloneMutex.Lock()
 	delete(c.clones, cloneID)
+	c.cloneMutex.Unlock()
+}
+
+func (c *Base) resetClones() {
+	c.cloneMutex.Lock()
+	c.clones = make(map[string]*CloneWrapper)
 	c.cloneMutex.Unlock()
 }
 

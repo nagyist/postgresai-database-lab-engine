@@ -13,6 +13,64 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestShouldStopInternalProcess(t *testing.T) {
+	tests := []struct {
+		name     string
+		label    string
+		expected bool
+	}{
+		{name: "sync label stops process", label: DBLabSyncLabel, expected: true},
+		{name: "promote label does not stop", label: DBLabPromoteLabel, expected: false},
+		{name: "patch label does not stop", label: DBLabPatchLabel, expected: false},
+		{name: "dump label does not stop", label: DBLabDumpLabel, expected: false},
+		{name: "restore label does not stop", label: DBLabRestoreLabel, expected: false},
+		{name: "embedded ui label does not stop", label: DBLabEmbeddedUILabel, expected: false},
+		{name: "foundation label does not stop", label: DBLabFoundationLabel, expected: false},
+		{name: "rename label does not stop", label: DBLabRenameLabel, expected: false},
+		{name: "empty label does not stop", label: "", expected: false},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			assert.Equal(t, tc.expected, shouldStopInternalProcess(tc.label))
+		})
+	}
+}
+
+func TestGetContainerName(t *testing.T) {
+	tests := []struct {
+		name     string
+		names    []string
+		expected string
+	}{
+		{name: "single name", names: []string{"/my_container"}, expected: "/my_container"},
+		{name: "multiple names", names: []string{"/name1", "/name2"}, expected: "/name1, /name2"},
+		{name: "no names", names: nil, expected: ""},
+		{name: "empty names", names: []string{}, expected: ""},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			c := container.Summary{Names: tc.names}
+			assert.Equal(t, tc.expected, getContainerName(c))
+		})
+	}
+}
+
+func TestGetControlContainerFilters(t *testing.T) {
+	filters := getControlContainerFilters()
+	require.Len(t, filters, 1)
+	assert.Equal(t, labelFilter, filters[0].Key)
+	assert.Equal(t, DBLabControlLabel, filters[0].Value)
+}
+
+func TestGetSatelliteContainerFilters(t *testing.T) {
+	filters := getSatelliteContainerFilters()
+	require.Len(t, filters, 1)
+	assert.Equal(t, labelFilter, filters[0].Key)
+	assert.Equal(t, DBLabSatelliteLabel, filters[0].Value)
+}
+
 func TestResourceOptions(t *testing.T) {
 	testCases := []struct {
 		configOptions  map[string]interface{}

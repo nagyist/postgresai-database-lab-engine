@@ -210,3 +210,153 @@ func TestRecoveryConfig(t *testing.T) {
 		assert.EqualValues(t, tc.recoveryConfig, recoveryConfig)
 	}
 }
+
+func TestBuildRecoveryConfig_noRestoreCommand(t *testing.T) {
+	fileConfig := map[string]string{"standby_mode": "true", "recovery_target_timeline": "latest"}
+
+	result := buildRecoveryConfig(fileConfig, nil)
+
+	assert.Equal(t, map[string]string{"standby_mode": "true", "recovery_target_timeline": "latest"}, result)
+}
+
+func TestBuildRecoveryConfig_emptyFileConfig(t *testing.T) {
+	result := buildRecoveryConfig(map[string]string{}, nil)
+	assert.Equal(t, map[string]string{}, result)
+}
+
+func TestBuildRecoveryConfig_userConfigOverridesFileConfig(t *testing.T) {
+	fileConfig := map[string]string{"restore_command": "cp /mnt/wal/%f %p", "standby_mode": "true"}
+	userConfig := map[string]string{"restore_command": "custom_cmd %f %p"}
+
+	result := buildRecoveryConfig(fileConfig, userConfig)
+
+	assert.Equal(t, userConfig, result)
+}
+
+func TestParseWALLine_invalidTimestamp(t *testing.T) {
+	log.SetDebug(false)
+
+	testCases := []struct {
+		name string
+		line string
+	}{
+		{name: "no commit token", line: "rmgr: Heap len (rec/tot): 54/54, tx: 100"},
+		{name: "commit with garbage timestamp", line: "desc: COMMIT not-a-date"},
+		{name: "commit with empty trailing", line: "desc: COMMIT "},
+		{name: "multiple commits takes last", line: "COMMIT bad COMMIT also-bad"},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			assert.Empty(t, parseWALLine(tc.line))
+		})
+	}
+}
+
+func TestParseWALLine_semicolonSeparator(t *testing.T) {
+	log.SetDebug(false)
+
+	line := "desc: COMMIT 2023-11-15 10:30:45.123456 UTC; rels: base/12994/16384"
+	assert.Equal(t, "20231115103045", parseWALLine(line))
+}
+
+func TestWalDir_boundaryVersions(t *testing.T) {
+	testCases := []struct {
+		name      string
+		pgVersion float64
+		expected  string
+	}{
+		{name: "pg 9.5 uses pg_xlog", pgVersion: 9.5, expected: "/data/pg_xlog"},
+		{name: "pg 9.9 uses pg_xlog", pgVersion: 9.9, expected: "/data/pg_xlog"},
+		{name: "pg 10 uses pg_wal", pgVersion: 10, expected: "/data/pg_wal"},
+		{name: "pg 14 uses pg_wal", pgVersion: 14, expected: "/data/pg_wal"},
+		{name: "pg 15 uses pg_wal", pgVersion: 15, expected: "/data/pg_wal"},
+		{name: "pg 16 uses pg_wal", pgVersion: 16, expected: "/data/pg_wal"},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			assert.Equal(t, tc.expected, walDir("/data", tc.pgVersion))
+		})
+	}
+}
+
+func TestWalCommand_outputFormat(t *testing.T) {
+	testCases := []struct {
+		name      string
+		pgVersion float64
+		walPath   string
+		contains  string
+	}{
+		{name: "pg 9.6 uses pg_xlogdump", pgVersion: 9.6, walPath: "/wal/000000010000000000000001", contains: "pg_xlogdump"},
+		{name: "pg 10 uses pg_waldump", pgVersion: 10, walPath: "/wal/000000010000000000000001", contains: "pg_waldump"},
+		{name: "pg 14 uses pg_waldump", pgVersion: 14, walPath: "/wal/000000010000000000000001", contains: "pg_waldump"},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			cmd := walCommand(tc.pgVersion, tc.walPath)
+			assert.Contains(t, cmd, tc.contains)
+			assert.Contains(t, cmd, tc.walPath)
+			assert.Contains(t, cmd, "-r Transaction | tail -1")
+		})
+	}
+}
+
+func TestGetCheckPointTimestamp_missingLabel(t *testing.T) {
+	controlData := `
+pg_control version number:            1201
+Latest checkpoint location:           67E/8966A4A0
+Minimum recovery ending location:     0/0
+`
+	_, err := getCheckPointTimestamp(context.Background(), bytes.NewBufferString(controlData))
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "checkpoint timestamp not found")
+}
+
+func TestGetCheckPointTimestamp_emptyReader(t *testing.T) {
+	_, err := getCheckPointTimestamp(context.Background(), bytes.NewBufferString(""))
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "checkpoint timestamp not found")
+}
+
+func TestGetCheckPointTimestamp_cancelledContext(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	controlData := `
+pg_control version number:            1201
+Latest checkpoint location:           67E/8966A4A0
+Time of latest checkpoint:            Fri 12 Feb 2021 01:15:09 PM MSK
+`
+	_, err := getCheckPointTimestamp(ctx, bytes.NewBufferString(controlData))
+	require.Error(t, err)
+}
+
+func TestGetCheckPointTimestamp_invalidTimestamp(t *testing.T) {
+	controlData := `Time of latest checkpoint:            not-a-valid-date`
+
+	_, err := getCheckPointTimestamp(context.Background(), bytes.NewBufferString(controlData))
+	require.Error(t, err)
+}
+
+func TestGetCheckPointTimestamp_utcConversion(t *testing.T) {
+	controlData := `Time of latest checkpoint:            Thu 01 Jul 2021 12:00:00 PM UTC`
+
+	dsa, err := getCheckPointTimestamp(context.Background(), bytes.NewBufferString(controlData))
+	require.NoError(t, err)
+	assert.Equal(t, "20210701120000", dsa)
+}
+
+func TestSkipSnapshotErr(t *testing.T) {
+	msg := "snapshot already contains latest data"
+	err := newSkipSnapshotErr(msg)
+
+	assert.Equal(t, msg, err.Error())
+	assert.Implements(t, (*error)(nil), err)
+}
+
+func TestSkipSnapshotErr_emptyMessage(t *testing.T) {
+	err := newSkipSnapshotErr("")
+	assert.Equal(t, "", err.Error())
+}

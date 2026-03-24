@@ -23,14 +23,18 @@ type State struct {
 	alerts      map[models.AlertType]models.Alert
 }
 
-// Alerts returns all registered retrieval alerts.
+// Alerts returns a snapshot copy of all registered retrieval alerts.
 func (s *State) Alerts() map[models.AlertType]models.Alert {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	alerts := s.alerts
+	result := make(map[models.AlertType]models.Alert, len(s.alerts))
 
-	return alerts
+	for k, v := range s.alerts {
+		result[k] = v
+	}
+
+	return result
 }
 
 func (s *State) addAlert(telemetryAlert telemetry.Alert) {

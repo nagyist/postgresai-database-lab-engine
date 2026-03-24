@@ -75,6 +75,10 @@ build-dle: build build-image ## Build Database Lab Engine binary and Docker imag
 test: ## Run unit tests
 	${GOTEST} ./...
 
+test-coverage: ## Run unit tests with coverage report
+	${GOTEST} -coverprofile=coverage.out ./...
+	@go tool cover -func=coverage.out
+
 test-ci-integration: ## Run integration tests
 	GO111MODULE=on go test -race  -tags=integration ./...
 
@@ -100,4 +104,4 @@ run-dle: build-dle
 	-p "2345:2345" \
 	dblab_server:local
 
-.PHONY: help all build test run-lint install-lint lint fmt clean build-image build-dle build-ci-checker build-client build-rds-refresh run-dle
+.PHONY: help all build test test-coverage run-lint install-lint lint fmt clean build-image build-dle build-ci-checker build-client build-rds-refresh run-dle

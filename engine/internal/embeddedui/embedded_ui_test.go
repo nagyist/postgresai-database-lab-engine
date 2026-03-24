@@ -3,7 +3,10 @@ package embeddedui
 import (
 	"testing"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"gitlab.com/postgres-ai/database-lab/v3/pkg/config/global"
 )
 
 func TestUIManagerOriginURL(t *testing.T) {
@@ -56,4 +59,123 @@ func TestUIManagerOriginURL(t *testing.T) {
 		require.Equal(t, tc.result, uiManager.OriginURL())
 
 	}
+}
+
+func TestGetEmbeddedUIName(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		instanceID string
+		expected   string
+	}{
+		{instanceID: "test123", expected: "dblab_embedded_ui_test123"},
+		{instanceID: "", expected: "dblab_embedded_ui_"},
+		{instanceID: "my-instance", expected: "dblab_embedded_ui_my-instance"},
+		{instanceID: "a_b_c", expected: "dblab_embedded_ui_a_b_c"},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.instanceID, func(t *testing.T) {
+			result := getEmbeddedUIName(tc.instanceID)
+			assert.Equal(t, tc.expected, result)
+		})
+	}
+}
+
+func TestUIManager_IsEnabled(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		name     string
+		enabled  bool
+		expected bool
+	}{
+		{name: "enabled", enabled: true, expected: true},
+		{name: "disabled", enabled: false, expected: false},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			ui := &UIManager{cfg: Config{Enabled: tc.enabled}}
+			assert.Equal(t, tc.expected, ui.IsEnabled())
+		})
+	}
+}
+
+func TestUIManager_GetHost(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		name     string
+		host     string
+		expected string
+	}{
+		{name: "specific host", host: "192.168.1.1", expected: "192.168.1.1"},
+		{name: "empty host", host: "", expected: ""},
+		{name: "localhost", host: "127.0.0.1", expected: "127.0.0.1"},
+		{name: "domain host", host: "example.com", expected: "example.com"},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			ui := &UIManager{cfg: Config{Host: tc.host}}
+			assert.Equal(t, tc.expected, ui.GetHost())
+		})
+	}
+}
+
+func TestUIManager_IsConfigChanged(t *testing.T) {
+	t.Parallel()
+
+	baseCfg := Config{Enabled: true, DockerImage: "nginx:1.23", Host: "0.0.0.0", Port: 2345}
+
+	testCases := []struct {
+		name    string
+		newCfg  Config
+		changed bool
+	}{
+		{name: "identical config", newCfg: Config{Enabled: true, DockerImage: "nginx:1.23", Host: "0.0.0.0", Port: 2345}, changed: false},
+		{name: "enabled changed", newCfg: Config{Enabled: false, DockerImage: "nginx:1.23", Host: "0.0.0.0", Port: 2345}, changed: true},
+		{name: "image changed", newCfg: Config{Enabled: true, DockerImage: "nginx:1.24", Host: "0.0.0.0", Port: 2345}, changed: true},
+		{name: "host changed", newCfg: Config{Enabled: true, DockerImage: "nginx:1.23", Host: "127.0.0.1", Port: 2345}, changed: true},
+		{name: "port changed", newCfg: Config{Enabled: true, DockerImage: "nginx:1.23", Host: "0.0.0.0", Port: 9999}, changed: true},
+		{name: "all changed", newCfg: Config{Enabled: false, DockerImage: "alpine:3", Host: "10.0.0.1", Port: 8080}, changed: true},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			ui := &UIManager{cfg: tc.newCfg}
+			assert.Equal(t, tc.changed, ui.isConfigChanged(baseCfg))
+		})
+	}
+}
+
+func TestNew(t *testing.T) {
+	t.Parallel()
+
+	cfg := Config{Enabled: true, DockerImage: "nginx:1.23", Host: "0.0.0.0", Port: 2345}
+	engProps := global.EngineProps{InstanceID: "test-id", ContainerName: "test-container"}
+
+	ui := New(cfg, engProps, nil, nil)
+
+	require.NotNil(t, ui)
+	assert.Equal(t, cfg, ui.cfg)
+	assert.Equal(t, engProps, ui.engProps)
+	assert.Nil(t, ui.runner)
+	assert.Nil(t, ui.docker)
+}
+
+func TestUIManager_OriginURL_IPv6(t *testing.T) {
+	t.Parallel()
+
+	ui := &UIManager{cfg: Config{Host: "::1", Port: 8080}}
+	result := ui.OriginURL()
+	assert.Equal(t, "http://[::1]:8080", result)
+}
+
+func TestUIManager_OriginURL_HighPort(t *testing.T) {
+	t.Parallel()
+
+	ui := &UIManager{cfg: Config{Host: "10.0.0.1", Port: 65535}}
+	assert.Equal(t, "http://10.0.0.1:65535", ui.OriginURL())
 }

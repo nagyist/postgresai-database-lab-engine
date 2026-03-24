@@ -35,8 +35,8 @@ func (s *BaseCloningSuite) SetupSuite() {
 }
 
 func (s *BaseCloningSuite) TearDownTest() {
-	s.cloning.clones = make(map[string]*CloneWrapper)
-	s.cloning.snapshotBox = SnapshotBox{items: make(map[string]*models.Snapshot)}
+	s.cloning.resetClones()
+	s.cloning.resetSnapshots(make(map[string]*models.Snapshot), nil)
 }
 
 func (s *BaseCloningSuite) TestFindWrapper() {
@@ -216,4 +216,124 @@ func TestCalculateProtectionTime_EdgeCases(t *testing.T) {
 
 func ptrUint(v uint) *uint {
 	return &v
+}
+
+func (s *BaseCloningSuite) TestGetExpectedCloningTime() {
+	t := s.T()
+
+	result := s.cloning.getExpectedCloningTime()
+	assert.Equal(t, 0.0, result, "expected zero when no clones exist")
+
+	s.cloning.setWrapper("clone1", &CloneWrapper{Clone: &models.Clone{Metadata: models.CloneMetadata{CloningTime: 2.0}}})
+	s.cloning.setWrapper("clone2", &CloneWrapper{Clone: &models.Clone{Metadata: models.CloneMetadata{CloningTime: 4.0}}})
+	s.cloning.setWrapper("clone3", &CloneWrapper{Clone: &models.Clone{Metadata: models.CloneMetadata{CloningTime: 6.0}}})
+
+	result = s.cloning.getExpectedCloningTime()
+	assert.Equal(t, 4.0, result, "expected average of 2, 4, 6")
+}
+
+func (s *BaseCloningSuite) TestGetExpectedCloningTimeSingleClone() {
+	t := s.T()
+
+	s.cloning.setWrapper("clone1", &CloneWrapper{Clone: &models.Clone{Metadata: models.CloneMetadata{CloningTime: 3.5}}})
+
+	result := s.cloning.getExpectedCloningTime()
+	assert.Equal(t, 3.5, result)
+}
+
+func (s *BaseCloningSuite) TestGetExpectedCloningTimeZeroValues() {
+	t := s.T()
+
+	s.cloning.setWrapper("clone1", &CloneWrapper{Clone: &models.Clone{Metadata: models.CloneMetadata{CloningTime: 0.0}}})
+	s.cloning.setWrapper("clone2", &CloneWrapper{Clone: &models.Clone{Metadata: models.CloneMetadata{CloningTime: 0.0}}})
+
+	result := s.cloning.getExpectedCloningTime()
+	assert.Equal(t, 0.0, result)
+}
+
+func (s *BaseCloningSuite) TestUpdateCloneStatusNotFound() {
+	t := s.T()
+
+	err := s.cloning.UpdateCloneStatus("nonexistent", models.Status{Code: models.StatusOK, Message: models.CloneMessageOK})
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "not found")
+}
+
+func (s *BaseCloningSuite) TestUpdateCloneSnapshot() {
+	t := s.T()
+
+	originalSnapshot := &models.Snapshot{ID: "snap1"}
+	newSnapshot := &models.Snapshot{ID: "snap2"}
+
+	s.cloning.setWrapper("clone1", &CloneWrapper{Clone: &models.Clone{ID: "clone1", Snapshot: originalSnapshot}})
+
+	err := s.cloning.UpdateCloneSnapshot("clone1", newSnapshot)
+	require.NoError(t, err)
+
+	w, ok := s.cloning.findWrapper("clone1")
+	require.True(t, ok)
+	assert.Equal(t, "snap2", w.Clone.Snapshot.ID)
+}
+
+func (s *BaseCloningSuite) TestUpdateCloneSnapshotNotFound() {
+	t := s.T()
+
+	err := s.cloning.UpdateCloneSnapshot("nonexistent", &models.Snapshot{ID: "snap1"})
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "not found")
+}
+
+func TestConnectionString(t *testing.T) {
+	tests := []struct {
+		name     string
+		host     string
+		port     string
+		username string
+		dbname   string
+		expected string
+	}{
+		{name: "standard values", host: "localhost", port: "5432", username: "postgres", dbname: "testdb", expected: "host='localhost' port=5432 user='postgres' database='testdb'"},
+		{name: "custom host and port", host: "10.0.0.1", port: "6000", username: "admin", dbname: "mydb", expected: "host='10.0.0.1' port=6000 user='admin' database='mydb'"},
+		{name: "socket path host", host: "/var/run/postgres", port: "5433", username: "user1", dbname: "db1", expected: "host='/var/run/postgres' port=5433 user='user1' database='db1'"},
+		{name: "empty dbname", host: "localhost", port: "5432", username: "postgres", dbname: "", expected: "host='localhost' port=5432 user='postgres' database=''"},
+		{name: "dbname with single quote", host: "localhost", port: "5432", username: "postgres", dbname: "test'db", expected: "host='localhost' port=5432 user='postgres' database='test''db'"},
+		{name: "dbname with spaces", host: "localhost", port: "5432", username: "postgres", dbname: "my database", expected: "host='localhost' port=5432 user='postgres' database='my database'"},
+		{name: "dbname with backslash", host: "localhost", port: "5432", username: "postgres", dbname: `test\db`, expected: `host='localhost' port=5432 user='postgres' database='test\\db'`},
+		{name: "username with single quote", host: "localhost", port: "5432", username: "user'name", dbname: "testdb", expected: `host='localhost' port=5432 user='user''name' database='testdb'`},
+		{name: "username with backslash", host: "localhost", port: "5432", username: `user\name`, dbname: "testdb", expected: `host='localhost' port=5432 user='user\\name' database='testdb'`},
+		{name: "combined quote and backslash in dbname", host: "localhost", port: "5432", username: "postgres", dbname: `test\'db`, expected: `host='localhost' port=5432 user='postgres' database='test\\''db'`},
+		{name: "host with single quote", host: "host'name", port: "5432", username: "postgres", dbname: "testdb", expected: `host='host''name' port=5432 user='postgres' database='testdb'`},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := connectionString(tt.host, tt.port, tt.username, tt.dbname)
+			assert.Equal(t, tt.expected, result)
+		})
+	}
+}
+
+func TestGetCloningState(t *testing.T) {
+	cfg := &Config{ProtectionLeaseDurationMinutes: 60, ProtectionMaxDurationMinutes: 120}
+	base := &Base{
+		config:      cfg,
+		clones:      make(map[string]*CloneWrapper),
+		snapshotBox: SnapshotBox{items: make(map[string]*models.Snapshot)},
+	}
+
+	state := base.GetCloningState()
+	assert.Equal(t, uint64(0), state.NumClones)
+	assert.Equal(t, 0.0, state.ExpectedCloningTime)
+	assert.Equal(t, uint(60), state.ProtectionLeaseDurationMinutes)
+	assert.Equal(t, uint(120), state.ProtectionMaxDurationMinutes)
+	assert.Empty(t, state.Clones)
+
+	base.setWrapper("c1", &CloneWrapper{Clone: &models.Clone{
+		CreatedAt: &models.LocalTime{Time: time.Now()},
+		Metadata:  models.CloneMetadata{CloningTime: 1.5},
+	}})
+
+	state = base.GetCloningState()
+	assert.Equal(t, uint64(1), state.NumClones)
+	assert.Equal(t, 1.5, state.ExpectedCloningTime)
 }

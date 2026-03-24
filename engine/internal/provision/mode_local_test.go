@@ -19,6 +19,12 @@ import (
 	"gitlab.com/postgres-ai/database-lab/v3/pkg/models"
 )
 
+type mockPortChecker struct{}
+
+func (c *mockPortChecker) checkPortAvailability(string, uint) error {
+	return nil
+}
+
 func TestPortAllocation(t *testing.T) {
 	cfg := &Config{
 		PortPool: PortPool{
@@ -29,6 +35,8 @@ func TestPortAllocation(t *testing.T) {
 
 	p, err := New(context.Background(), cfg, &resources.DB{}, &client.Client{}, &pool.Manager{}, "instanceID", "networkID", "")
 	require.NoError(t, err)
+
+	p.portChecker = &mockPortChecker{}
 
 	// Allocate a new port.
 	port, err := p.allocatePort()

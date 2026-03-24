@@ -39,3 +39,47 @@ max_wal_senders setting:              15
 	require.Nil(t, err)
 	assert.EqualValues(t, settings, expectedSettings)
 }
+
+func TestInitParamsExtraction_EmptyInput(t *testing.T) {
+	settings, err := extractControlDataParams(context.Background(), bytes.NewBufferString(""))
+	require.NoError(t, err)
+	assert.Empty(t, settings)
+}
+
+func TestInitParamsExtraction_PartialData(t *testing.T) {
+	controlDataOutput := bytes.NewBufferString(`
+wal_level setting:                    replica
+max_connections setting:              100
+`)
+
+	settings, err := extractControlDataParams(context.Background(), controlDataOutput)
+	require.NoError(t, err)
+	assert.Equal(t, "100", settings["max_connections"])
+	assert.Len(t, settings, 1)
+}
+
+func TestInitParamsExtraction_CancelledContext(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	controlDataOutput := bytes.NewBufferString(`
+max_connections setting:              500
+max_worker_processes setting:         8
+`)
+
+	settings, err := extractControlDataParams(ctx, controlDataOutput)
+	assert.ErrorIs(t, err, context.Canceled)
+	assert.Empty(t, settings)
+}
+
+func TestInitParamsExtraction_NoMatchingParams(t *testing.T) {
+	controlDataOutput := bytes.NewBufferString(`
+wal_level setting:                    logical
+wal_log_hints setting:                on
+some_other_param setting:             value
+`)
+
+	settings, err := extractControlDataParams(context.Background(), controlDataOutput)
+	require.NoError(t, err)
+	assert.Empty(t, settings)
+}
