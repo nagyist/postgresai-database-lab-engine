@@ -126,15 +126,15 @@ export const CreateClone = observer((props: Props) => {
 
       setBranchesList(branches)
       formik.setFieldValue('branch', initiallySelectedBranch?.name ?? '')
-      formik.setFieldValue('dataset', initiallySelectedBranch?.dataset ?? '')
+      formik.setFieldValue('dataset', initiallySelectedBranch?.baseDataset ?? '')
 
       if (initiallySelectedBranch) {
-        const compositeKey = `${initiallySelectedBranch.name}|${initiallySelectedBranch.dataset}`
+        const compositeKey = `${initiallySelectedBranch.name}|${initiallySelectedBranch.baseDataset}`
         setSelectedBranchKey(compositeKey)
       }
 
       if (props.api.getSnapshots && initiallySelectedBranch) {
-        await fetchBranchSnapshotsData(initiallySelectedBranch.name, initiallySelectedBranch.dataset, initialSnapshotId)
+        await fetchBranchSnapshotsData(initiallySelectedBranch.name, initiallySelectedBranch.baseDataset, initialSnapshotId)
       } else if (!props.api.getSnapshots) {
         const allSnapshots = stores.main?.snapshots?.data ?? []
         const sortedSnapshots = allSnapshots.slice().sort(compareSnapshotsDesc)
@@ -240,8 +240,8 @@ export const CreateClone = observer((props: Props) => {
                 items={
                   branchesList?.map((branch) => {
                     return {
-                      value: `${branch.name}|${branch.dataset}`,
-                      children: `${branch.name} (${branch.dataset})`,
+                      value: `${branch.name}|${branch.baseDataset}`,
+                      children: `${branch.name} (${branch.baseDataset})`,
                     }
                   }) ?? []
                 }
