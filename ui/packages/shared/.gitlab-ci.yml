@@ -56,7 +56,7 @@ publish-shared-preview:
 
     # Publish .tgz archive
     - TARBALL=$(ls postgres.ai-shared-*.tgz)
-    - pnpm publish "$TARBALL" --no-git-checks --tag "$PREID"
+    - npm publish "$TARBALL" --tag "$PREID"
 
 publish-shared-release:
   <<: [*shared_base, *only_ui_tag_release]
