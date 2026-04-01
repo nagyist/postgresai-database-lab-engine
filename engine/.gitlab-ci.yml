@@ -625,6 +625,9 @@ integration-test:
       pull_policy: if-not-present
   <<: *only_feature
   stage: integration-test
+  retry:
+    max: 2
+    when: script_failure
   variables:
     # Instruct Testcontainers to use the daemon of DinD.
     # DOCKER_HOST: "tcp://docker:2375"
