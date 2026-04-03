@@ -2,7 +2,7 @@ import { request } from 'helpers/request'
 import { formatWSTokenDto, WSTokenDTO } from '@postgres.ai/shared/types/api/entities/wsToken'
 import { GetWSToken } from "@postgres.ai/shared/types/api/endpoints/getWSToken";
 
-export const getWSToken: GetWSToken = async (req ) => {
+export const getWSToken: GetWSToken = async (_req) => {
   const response = await request('/admin/ws-auth')
 
   return {

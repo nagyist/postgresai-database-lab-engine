@@ -1,6 +1,6 @@
 {
   "compilerOptions": {
-    "target": "es5",
+    "target": "es2020",
     "lib": ["dom", "dom.iterable", "esnext"],
     "allowJs": true,
     "skipLibCheck": true,
@@ -16,7 +16,11 @@
     "noEmit": true,
     "jsx": "react-jsx",
     "baseUrl": "src",
-    "noImplicitAny": true
+    "paths": {
+      "@postgres.ai/shared/*": ["../../shared/*"]
+    },
+    "noImplicitAny": true,
+    "types": ["vite/client"]
   },
   "include": ["src", "../shared"]
 }

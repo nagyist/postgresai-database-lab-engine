@@ -11,7 +11,7 @@ include:
 
 .ui_cache: &ui_cache
   image:
-    name: node:21.1.0-alpine
+    name: node:22-alpine
     pull_policy: if-not-present
   cache: &cache
     key: "$CI_COMMIT_REF_SLUG"
@@ -26,7 +26,7 @@ check-code-style:
   stage: test
   before_script:
     - corepack enable
-    - corepack prepare pnpm@8.9.2 --activate
+    - corepack prepare pnpm@8.15.9 --activate
     - export PNPM_HOME=/usr/local/bin
     - pnpm config set store-dir /builds/postgres-ai/database-lab/.pnpm-store/
 
@@ -63,7 +63,7 @@ semgrep-sast:
 e2e-ce-ui-test:
   <<: *ui_checks
   image:
-    name: node:21.1.0
+    name: node:22
     pull_policy: if-not-present
   stage: integration-test
   variables:
@@ -72,10 +72,7 @@ e2e-ce-ui-test:
     - apt update
     - apt install -y curl libgtk2.0-0 libgtk-3-0 libgbm-dev libnotify-dev libgconf-2-4 libnss3 libxss1 libasound2 libxtst6 xauth xvfb
     - npm install -g wait-on
-    - npm install -g pnpm
-    - pnpm config set verify-store-integrity false
-    # TODO: Set up caching.
-    #- pnpm config set store-dir /builds/postgres-ai/database-lab/.pnpm-store/
+    - npm install -g pnpm@8.15.9
   script:
     - pnpm --dir ui/ --filter @postgres.ai/ce install
     - pnpm --dir ui/ --filter @postgres.ai/ce build

@@ -22,26 +22,29 @@ For example, cloning a 10 TiB PostgreSQL database can take less than 2 seconds.
 
 At the repository root, you can run commands for all packages or individual packages:
 
-- `<npm command> -ws` – run the specified command on all packages.
-- `<npm command> -w <package-name>` – run the specified command on a single package.
+- `pnpm --filter <package-name> <command>` – run the specified command on a single package.
 
 #### Examples
-- `npm ci -ws` – install all dependencies.
-- `npm run build -ws` – build all packages.
-- `npm run start -w @postgres.ai/ce` – run the Community Edition UI locally in development mode.
+- `pnpm install` – install all dependencies.
+- `pnpm --filter @postgres.ai/ce build` – build the Community Edition UI.
+- `pnpm --filter @postgres.ai/ce start` – run the Community Edition UI locally in development mode.
 
 _Important note: do not run or build the `@postgres.ai/shared` package directly; it is a dependency._
 
 ### How to start the Community Edition UI
 - `cd ui`
-- `npm ci -ws` – install dependencies for all packages (run once).
-- `npm run start -w @postgres.ai/ce` – start the development server.
+- `pnpm install` – install dependencies for all packages (run once).
+- `pnpm --filter @postgres.ai/ce start` – start the development server.
+
+The dev server proxies `/api` and `/ws` to `http://localhost:446` by default.
+Set the `VITE_DEV_PROXY_TARGET` environment variable to override the proxy target, for example:
+`VITE_DEV_PROXY_TARGET=https://demo.dblab.dev:446 pnpm --filter @postgres.ai/ce start`
 
 ### How to build the Community Edition UI
 
 - `cd ui`
-- `npm ci -ws` – install dependencies for all packages (run once).
-- `npm run build -w @postgres.ai/ce` – build the Community Edition UI.
+- `pnpm install` – install dependencies for all packages (run once).
+- `pnpm --filter @postgres.ai/ce build` – build the Community Edition UI.
 
 ### CI pipelines for UI code
 
@@ -58,7 +61,7 @@ Vulnerabilities, CVEs, and security issues can be reported on GitLab or GitHub t
 #### Package Issues
 Ways to resolve (in descending order of preference):
 1. Update the package – search npm for a newer version, as the vulnerability may already be fixed.
-2. If the vulnerability is in a sub-package, use [npm-force-resolutions](https://www.npmjs.com/package/npm-force-resolutions) to override it. Use this technique with caution—it may break the project during build or at runtime. Perform a full end-to-end test afterward.
+2. If the vulnerability is in a sub-package, use [`pnpm.overrides`](https://pnpm.io/package_json#pnpmoverrides) in the root `package.json` to pin the transitive dependency to a patched version. Use this technique with caution—it may break the project during build or at runtime. Perform a full end-to-end test afterward.
 3. Fork the package and include it locally in this repository.
 4. If the issue is a false positive vulnerability, ignore it using your SAST tool's ignore directives. **This should be the last resort; apply other solutions first.**
 
