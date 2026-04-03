@@ -11,7 +11,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/jackc/pgx/v4"
+	"github.com/jackc/pgx/v5"
 	"golang.org/x/mod/semver"
 
 	"gitlab.com/postgres-ai/database-lab/v3/pkg/log"
@@ -89,7 +89,7 @@ func ConnectionString(host, port, username, dbname, password string) string {
 
 // GetDatabaseListQuery provides the query to get the list of databases available for user.
 func GetDatabaseListQuery(username string) string {
-	return fmt.Sprintf(availableDBsTemplate, username)
+	return fmt.Sprintf(availableDBsTemplate, username) //nolint:gosec // username is a trusted configuration value, not direct user input
 }
 
 // CheckSource checks the readiness of the source database to dump and restore processes.
@@ -214,6 +214,8 @@ func getDBList(ctx context.Context, conn *pgx.Conn, dbUsername string) ([]string
 		return nil, fmt.Errorf("failed to perform query listing databases: %w", err)
 	}
 
+	defer rows.Close()
+
 	for rows.Next() {
 		var dbName string
 		if err := rows.Scan(&dbName); err != nil {
@@ -221,6 +223,10 @@ func getDBList(ctx context.Context, conn *pgx.Conn, dbUsername string) ([]string
 		}
 
 		dbList = append(dbList, dbName)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("row iteration error: %w", err)
 	}
 
 	return dbList, nil
@@ -603,6 +609,8 @@ func getTuningParameters(ctx context.Context, conn *pgx.Conn) (map[string]string
 		return nil, fmt.Errorf("failed to perform query detecting query tuning params: %w", err)
 	}
 
+	defer rows.Close()
+
 	var tuningParams = make(map[string]string)
 
 	for rows.Next() {
@@ -613,6 +621,10 @@ func getTuningParameters(ctx context.Context, conn *pgx.Conn) (map[string]string
 		}
 
 		tuningParams[param.name] = param.setting
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("failed to iterate query tuning params: %w", err)
 	}
 
 	return tuningParams, nil

@@ -10,9 +10,10 @@ import (
 	"path"
 	"strings"
 
-	"github.com/jackc/pgx/v4"
+	"github.com/jackc/pgx/v5"
 	"github.com/pkg/errors"
 
+	"gitlab.com/postgres-ai/database-lab/v3/internal/retrieval/engine/postgres/tools/db"
 	"gitlab.com/postgres-ai/database-lab/v3/internal/retrieval/engine/postgres/tools/defaults"
 	"gitlab.com/postgres-ai/database-lab/v3/pkg/log"
 	"gitlab.com/postgres-ai/database-lab/v3/pkg/models"
@@ -72,16 +73,16 @@ func unixSocketDir(socketDir, cloneID string) string {
 }
 
 func buildConnectionString(clone *models.Clone, socketDir string) string {
-	db := clone.DB
+	cloneDB := clone.DB
 
-	if db.DBName == "" {
-		db.DBName = defaults.DBName
+	if cloneDB.DBName == "" {
+		cloneDB.DBName = defaults.DBName
 	}
 
-	return fmt.Sprintf(`host=%s port=%s user=%s database='%s' application_name='%s'`,
+	return fmt.Sprintf(`host=%s port=%s user='%s' database='%s' application_name='%s'`,
 		socketDir,
-		db.Port,
-		db.Username,
-		db.DBName,
+		cloneDB.Port,
+		db.EscapeLibpqValue(cloneDB.Username),
+		db.EscapeLibpqValue(cloneDB.DBName),
 		observerApplicationName)
 }

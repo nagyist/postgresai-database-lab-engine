@@ -35,10 +35,11 @@ help: ## Display the help message
 all: clean build ## Build all binary components of the project
 
 install-lint: ## Install the linter to $GOPATH/bin which is expected to be in $PATH
-	curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(go env GOPATH)/bin v1.64.8
+	curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(go env GOPATH)/bin v2.11.4
 
 run-lint: ## Run linters
 	golangci-lint run
+	golangci-lint fmt --diff
 
 lint: install-lint run-lint ## Install and run linters
 

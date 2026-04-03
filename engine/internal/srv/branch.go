@@ -639,7 +639,7 @@ func cleanupSnapshotProperties(repo *models.Repo, fsm pool.FSManager, branchName
 }
 
 func snapshotsToRemove(repo *models.Repo, snapshotID, branchName string) []string {
-	removingList := []string{}
+	removingList := make([]string, 0, len(repo.Snapshots))
 
 	// Traverse up the snapshot tree
 	removingList = append(removingList, traverseUp(repo, snapshotID, branchName)...)
@@ -684,7 +684,7 @@ func traverseUp(repo *models.Repo, snapshotID, branchName string) []string {
 func traverseDown(repo *models.Repo, snapshotID string) []string {
 	snapshotPointer := repo.Snapshots[snapshotID]
 
-	removingList := []string{}
+	removingList := make([]string, 0, len(snapshotPointer.Child))
 
 	for _, snapshotChild := range snapshotPointer.Child {
 		removingList = append(removingList, snapshotChild)

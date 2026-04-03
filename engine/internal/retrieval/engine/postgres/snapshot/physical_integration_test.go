@@ -22,7 +22,6 @@ import (
 )
 
 const (
-
 	initialScript = `
 -- SCHEMA
 begin;

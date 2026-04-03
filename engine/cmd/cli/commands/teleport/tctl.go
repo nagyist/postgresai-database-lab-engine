@@ -61,10 +61,7 @@ func runTctl(ctx context.Context, tctlPath, identityFile, proxyAddr string, args
 	ctx, cancel := context.WithTimeout(ctx, tctlCommandTimeout)
 	defer cancel()
 
-	baseArgs := []string{
-		"--identity", identityFile,
-		"--auth-server", proxyAddr,
-	}
+	baseArgs := []string{"--identity", identityFile, "--auth-server", proxyAddr}
 	fullArgs := append(baseArgs, args...)
 
 	out, err := exec.CommandContext(ctx, tctlPath, fullArgs...).CombinedOutput()

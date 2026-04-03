@@ -14,7 +14,7 @@ import (
 
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/client"
-	"github.com/jackc/pgx/v4"
+	"github.com/jackc/pgx/v5"
 
 	dockerTools "gitlab.com/postgres-ai/database-lab/v3/internal/provision/docker"
 	"gitlab.com/postgres-ai/database-lab/v3/internal/retrieval/engine/postgres/tools"

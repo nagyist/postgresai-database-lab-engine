@@ -15,8 +15,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/jackc/pgtype/pgxtype"
-	"github.com/jackc/pgx/v4"
+	"github.com/jackc/pgx/v5"
 	_ "github.com/lib/pq" // Register Postgres database driver.
 	"github.com/pkg/errors"
 	"github.com/rs/xid"
@@ -290,8 +289,8 @@ func (c *Base) fillCloneSession(cloneID string, session *resources.Session) {
 	}
 }
 
-// ConnectToClone connects to clone by cloneID.
-func (c *Base) ConnectToClone(ctx context.Context, cloneID string) (pgxtype.Querier, error) {
+// ConnectToClone returns a new pgx connection to the PostgreSQL instance running in the clone identified by cloneID.
+func (c *Base) ConnectToClone(ctx context.Context, cloneID string) (*pgx.Conn, error) {
 	w, ok := c.findWrapper(cloneID)
 	if !ok {
 		return nil, errors.New("not found")

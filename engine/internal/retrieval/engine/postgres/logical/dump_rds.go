@@ -20,6 +20,9 @@ import (
 
 const (
 	sslRootCert = "/cert/ssl-combined-ca-bundle.pem"
+
+	rdsDatabaseListQuery = `select datname from pg_catalog.pg_database
+	where not datistemplate and has_database_privilege('%s', datname, 'CONNECT')`
 )
 
 type rdsDumper struct {
@@ -58,7 +61,7 @@ Set up valid environment variables AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY`)
 	}, nil
 }
 
-// GetEnvVariables returns dumper environment variables.
+// GetCmdEnvVariables returns dumper environment variables.
 func (r *rdsDumper) GetCmdEnvVariables() []string {
 	cert := sslRootCert
 
@@ -109,6 +112,5 @@ func (r *rdsDumper) SetConnectionOptions(ctx context.Context, c *Connection) err
 }
 
 func (r *rdsDumper) GetDatabaseListQuery(username string) string {
-	return fmt.Sprintf(`select datname from pg_catalog.pg_database 
-	where not datistemplate and has_database_privilege('%s', datname, 'CONNECT')`, username)
+	return fmt.Sprintf(rdsDatabaseListQuery, username) //nolint:gosec // username is a trusted configuration value, not direct user input
 }
