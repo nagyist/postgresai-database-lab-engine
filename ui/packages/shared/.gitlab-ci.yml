@@ -18,7 +18,7 @@
   before_script:
     - apk add --no-cache rsync jq
     - corepack enable
-    - corepack prepare pnpm@8.9.2 --activate
+    - corepack prepare pnpm@8.15.9 --activate
     - pnpm config set store-dir .pnpm-store
     - pnpm --dir ui/packages/shared install --frozen-lockfile
 

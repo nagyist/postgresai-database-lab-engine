@@ -1,24 +1,22 @@
-# Biuld phase.
+# Build phase.
 FROM node:22-alpine as build
 
 WORKDIR /app
 
 COPY ./ui/ .
 
-# RUN --mount=type=bind,id=pnpm,source=.pnpm-store,target=/app/.pnpm-store
-
 ARG API_URL_PREFIX
-ENV REACT_APP_API_URL_PREFIX ${API_URL_PREFIX}
+ENV VITE_API_URL_PREFIX ${API_URL_PREFIX}
 
 ARG WS_URL_PREFIX
-ENV REACT_APP_WS_URL_PREFIX ${WS_URL_PREFIX}
+ENV VITE_WS_URL_PREFIX ${WS_URL_PREFIX}
 
 RUN apk add --no-cache --update git && \
-    npm i -g pnpm@8; \
+    npm i -g pnpm@8.15.9; \
     pnpm config set store-dir /app/.pnpm-store; \
-    pnpm set verify-store-integrity false; \
     pnpm --filter @postgres.ai/ce i; \
-    pnpm --filter @postgres.ai/ce build
+    pnpm --filter @postgres.ai/ce build; \
+    find /app/packages/ce/build -name '*.map' -delete
 
 # Run phase.
 FROM nginx:1.29.7-alpine as run
