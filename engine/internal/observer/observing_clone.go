@@ -15,7 +15,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/jackc/pgx/v4"
+	"github.com/jackc/pgx/v5"
 	"github.com/pkg/errors"
 
 	"gitlab.com/postgres-ai/database-lab/v3/internal/provision/resources"
@@ -140,10 +140,10 @@ func (c *ObservingClone) AddArtifact(sessionID uint64) {
 
 // GetArtifactList returns available artifact session IDs for the requested clone.
 func (c *ObservingClone) GetArtifactList() []uint64 {
-	sessionIDs := []uint64{}
-
 	c.registryMu.Lock()
 	defer c.registryMu.Unlock()
+
+	sessionIDs := make([]uint64, 0, len(c.sessionRegistry))
 
 	for v := range c.sessionRegistry {
 		sessionIDs = append(sessionIDs, v)

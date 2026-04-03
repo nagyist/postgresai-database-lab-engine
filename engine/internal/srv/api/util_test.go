@@ -118,6 +118,7 @@ func TestWriteDataTyped(t *testing.T) {
 		{name: "json content", statusCode: http.StatusOK, contentType: JSONContentType, data: []byte(`{"key":"val"}`)},
 		{name: "yaml content", statusCode: http.StatusOK, contentType: YamlContentType, data: []byte("key: val\n")},
 		{name: "empty body", statusCode: http.StatusNoContent, contentType: JSONContentType, data: nil},
+		{name: "zero-length body", statusCode: http.StatusNoContent, contentType: JSONContentType, data: []byte{}},
 	}
 
 	for _, tc := range testCases {
@@ -129,7 +130,12 @@ func TestWriteDataTyped(t *testing.T) {
 
 			assert.Equal(t, tc.statusCode, rec.Code)
 			assert.Equal(t, tc.contentType, rec.Header().Get("Content-Type"))
-			assert.Equal(t, tc.data, rec.Body.Bytes())
+
+			if len(tc.data) > 0 {
+				assert.Equal(t, tc.data, rec.Body.Bytes())
+			} else {
+				assert.Zero(t, rec.Body.Len())
+			}
 		})
 	}
 }

@@ -959,10 +959,7 @@ func (p *PhysicalInitial) buildContainerConfig(clonePath, promoteImage, password
 }
 
 func (p *PhysicalInitial) getEnvironmentVariables(clonePath, password string) []string {
-	envVariables := []string{
-		"PGDATA=" + clonePath,
-		"POSTGRES_PASSWORD=" + password,
-	}
+	envVariables := []string{"PGDATA=" + clonePath, "POSTGRES_PASSWORD=" + password}
 
 	// Add user-defined environment variables.
 	for env, value := range p.options.Envs {

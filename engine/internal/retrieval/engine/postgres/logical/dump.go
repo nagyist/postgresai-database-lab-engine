@@ -17,7 +17,7 @@ import (
 	"github.com/docker/docker/api/types/filters"
 	"github.com/docker/docker/api/types/mount"
 	"github.com/docker/docker/client"
-	"github.com/jackc/pgx/v4"
+	"github.com/jackc/pgx/v5"
 	"github.com/pkg/errors"
 
 	"gitlab.com/postgres-ai/database-lab/v3/internal/diagnostic"
@@ -428,10 +428,14 @@ func (d *DumpJob) getDBList(ctx context.Context) (map[string]DumpDefinition, err
 		return nil, fmt.Errorf("failed to connect to DB: %w", err)
 	}
 
+	defer func() { _ = querier.Close(context.Background()) }()
+
 	rows, err := querier.Query(ctx, d.dumper.GetDatabaseListQuery(d.config.db.Username))
 	if err != nil {
 		return nil, fmt.Errorf("failed to perform query listing databases: %w", err)
 	}
+
+	defer rows.Close()
 
 	for rows.Next() {
 		var dbName string
@@ -440,6 +444,10 @@ func (d *DumpJob) getDBList(ctx context.Context) (map[string]DumpDefinition, err
 		}
 
 		dbList[dbName] = DumpDefinition{}
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("row iteration error: %w", err)
 	}
 
 	return dbList, nil

@@ -155,9 +155,9 @@ func (pm *Manager) GetFSManager(name string) (FSManager, error) {
 
 // GetFSManagerList returns a filesystem manager list.
 func (pm *Manager) GetFSManagerList() []FSManager {
-	fs := []FSManager{}
-
 	pm.mu.Lock()
+
+	fs := make([]FSManager, 0, len(pm.fsManagerPool))
 
 	for _, pool := range pm.fsManagerPool {
 		fs = append(fs, pool)

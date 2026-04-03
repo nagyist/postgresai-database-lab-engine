@@ -68,8 +68,11 @@ func WriteDataTyped(
 	w.Header().Set("Content-Type", contentType)
 	w.WriteHeader(httpStatusCode)
 
-	if _, err := w.Write(b); err != nil {
-		return errors.Wrap(err, "failed to write response")
+	// skip write on empty body to avoid implicit chunked transfer-encoding.
+	if len(b) > 0 {
+		if _, err := w.Write(b); err != nil {
+			return errors.Wrap(err, "failed to write response")
+		}
 	}
 
 	return nil

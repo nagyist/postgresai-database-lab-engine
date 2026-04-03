@@ -298,7 +298,7 @@ func (r *Retrieval) collectFoundationImageContent() error {
 }
 
 func collectDBList(definitions map[string]logical.DumpDefinition) []string {
-	dbs := []string{}
+	dbs := make([]string, 0, len(definitions))
 
 	for dbName := range definitions {
 		dbs = append(dbs, dbName)

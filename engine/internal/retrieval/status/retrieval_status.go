@@ -10,11 +10,10 @@ import (
 	"database/sql"
 	"fmt"
 
-	"gitlab.com/postgres-ai/database-lab/v3/pkg/config/global"
-
-	"github.com/jackc/pgx/v4"
+	"github.com/jackc/pgx/v5"
 
 	"gitlab.com/postgres-ai/database-lab/v3/internal/retrieval/engine/postgres/tools/defaults"
+	"gitlab.com/postgres-ai/database-lab/v3/pkg/config/global"
 	"gitlab.com/postgres-ai/database-lab/v3/pkg/log"
 	"gitlab.com/postgres-ai/database-lab/v3/pkg/models"
 )
