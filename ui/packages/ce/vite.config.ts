@@ -72,12 +72,7 @@ export default defineConfig({
       },
     },
   },
-  resolve: {
-    alias: {
-      crypto: 'crypto-browserify',
-      stream: 'stream-browserify',
-    },
-  },
+  resolve: {},
   css: {
     preprocessorOptions: {
       scss: {
