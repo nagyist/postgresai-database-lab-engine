@@ -1,7 +1,7 @@
-# To get started with Dependabot version updates, you'll need to specify which
-# package ecosystems to update and where the package manifests are located.
-# Please see the documentation for all configuration options:
-# https://docs.github.com/code-security/dependabot/dependabot-version-updates/configuration-options-for-the-dependabot.yml-file
+# Dependabot is configured to surface only security-driven updates.
+# `open-pull-requests-limit: 0` disables routine version-update PRs,
+# but security-update PRs (from advisories) are still opened automatically.
+# See: https://docs.github.com/code-security/dependabot/dependabot-version-updates/configuration-options-for-the-dependabot.yml-file#open-pull-requests-limit
 
 version: 2
 updates:
@@ -9,6 +9,7 @@ updates:
     directory: "/engine"
     schedule:
       interval: "weekly"
+    open-pull-requests-limit: 0
     ignore:
       - dependency-name: "*"
         update-types: ["version-update:semver-major"]
@@ -17,6 +18,7 @@ updates:
     directory: "/engine"
     schedule:
       interval: "weekly"
+    open-pull-requests-limit: 0
     ignore:
       - dependency-name: "*"
         update-types: ["version-update:semver-major"]
@@ -25,6 +27,7 @@ updates:
     directory: "/ui/packages/ce"
     schedule:
       interval: "weekly"
+    open-pull-requests-limit: 0
     ignore:
       - dependency-name: "*"
         update-types: ["version-update:semver-major"]
@@ -33,6 +36,7 @@ updates:
     directory: "/ui"
     schedule:
       interval: "weekly"
+    open-pull-requests-limit: 0
     ignore:
       - dependency-name: "*"
         update-types: ["version-update:semver-major"]
@@ -41,6 +45,7 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
+    open-pull-requests-limit: 0
     ignore:
       - dependency-name: "*"
         update-types: ["version-update:semver-major"]
