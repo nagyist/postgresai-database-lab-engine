@@ -92,8 +92,8 @@ export const formatConfig = (config: configTypes) => {
       config.retrieval?.spec?.logicalDump?.options?.source?.connection
         ?.password,
     databases: formatDatabases(
-      config.retrieval?.spec?.logicalDump?.options
-        ?.databases as DatabaseType | null,
+      (config.retrieval?.spec?.logicalDump?.options
+        ?.databases as DatabaseType | undefined) ?? null,
     ),
     dumpParallelJobs:
       config.retrieval?.spec?.logicalDump?.options?.parallelJobs,
@@ -105,11 +105,11 @@ export const formatConfig = (config: configTypes) => {
       config.retrieval?.spec?.logicalRestore?.options?.ignoreErrors,
     pgDumpCustomOptions: formatDumpCustomOptions(
       (config.retrieval?.spec?.logicalDump?.options
-        ?.customOptions as string[]) || null,
+        ?.customOptions as string[] | undefined) ?? null,
     ),
     pgRestoreCustomOptions: formatDumpCustomOptions(
       (config.retrieval?.spec?.logicalRestore?.options
-        ?.customOptions as string[]) || null,
+        ?.customOptions as string[] | undefined) ?? null,
     ),
   }
 }
