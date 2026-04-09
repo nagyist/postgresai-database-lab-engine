@@ -22,6 +22,7 @@ import (
 
 	"github.com/AlekSi/pointer"
 	"github.com/ahmetalpbalkan/dlog"
+	cerrdefs "github.com/containerd/errdefs"
 	"github.com/docker/cli/cli/streams"
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/container"
@@ -30,7 +31,6 @@ import (
 	"github.com/docker/docker/api/types/mount"
 	"github.com/docker/docker/api/types/network"
 	"github.com/docker/docker/client"
-	"github.com/docker/docker/errdefs"
 	"github.com/docker/docker/pkg/jsonmessage"
 	"github.com/docker/docker/pkg/stdcopy"
 	"github.com/pkg/errors"
@@ -518,13 +518,18 @@ func RemoveContainer(ctx context.Context, dockerClient *client.Client, container
 	log.Msg(fmt.Sprintf("Container %q has been removed", containerID))
 }
 
-// PullImage pulls a Docker image.
-func PullImage(ctx context.Context, dockerClient *client.Client, image string) error {
+// imagePuller is the minimal subset of the Docker client used by PullImage.
+// Defined as an interface so PullImage can be unit-tested with a fake client.
+type imagePuller interface {
+	ImageInspect(ctx context.Context, imageID string, opts ...client.ImageInspectOption) (imagetypes.InspectResponse, error)
+	ImagePull(ctx context.Context, refStr string, options imagetypes.PullOptions) (io.ReadCloser, error)
+}
+
+// PullImage pulls a Docker image if it is not already present locally.
+func PullImage(ctx context.Context, dockerClient imagePuller, image string) error {
 	inspectionResult, err := dockerClient.ImageInspect(ctx, image)
-	if err != nil {
-		if _, ok := err.(errdefs.ErrNotFound); !ok {
-			return errors.Wrapf(err, "failed to inspect image %q", image)
-		}
+	if err != nil && !cerrdefs.IsNotFound(err) {
+		return errors.Wrapf(err, "failed to inspect image %q", image)
 	}
 
 	if err == nil && inspectionResult.ID != "" {
@@ -540,7 +545,7 @@ func PullImage(ctx context.Context, dockerClient *client.Client, image string) e
 	defer func() { _ = pullOutput.Close() }()
 
 	if err := jsonmessage.DisplayJSONMessagesToStream(pullOutput, streams.NewOut(os.Stdout), nil); err != nil {
-		log.Err("failed to render pull image output: ", err)
+		return errors.Wrapf(err, "failed to pull image %q", image)
 	}
 
 	return nil

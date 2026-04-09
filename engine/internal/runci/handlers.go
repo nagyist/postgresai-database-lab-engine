@@ -163,7 +163,7 @@ func (s *Server) runMigration(w http.ResponseWriter, r *http.Request) {
 func (s *Server) runCommands(ctx context.Context, clone *models.Clone, runID string, volumes, tags map[string]string,
 	commands, migrationEnvs []string, cfg dblab_types.Config) (*observer.Session, error) {
 	if err := tools.PullImage(ctx, s.docker, s.config.Runner.Image); err != nil {
-		return nil, errors.Wrap(err, "failed to scan pulling image response")
+		return nil, fmt.Errorf("failed to prepare runner image %q: %w", s.config.Runner.Image, err)
 	}
 
 	containerCfg := s.buildContainerConfig(clone, migrationEnvs)
