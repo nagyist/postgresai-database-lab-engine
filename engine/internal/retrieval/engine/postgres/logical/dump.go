@@ -286,7 +286,7 @@ func (d *DumpJob) Run(ctx context.Context) (err error) {
 	}
 
 	if err := tools.PullImage(ctx, d.dockerClient, d.DockerImage); err != nil {
-		return errors.Wrap(err, "failed to scan pulling image response")
+		return fmt.Errorf("failed to prepare dump image %q: %w", d.DockerImage, err)
 	}
 
 	if err := os.MkdirAll(d.DumpOptions.DumpLocation, 0666); err != nil {

@@ -6,12 +6,20 @@ package tools
 
 import (
 	"bytes"
+	"context"
+	"errors"
+	"fmt"
+	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
+	cerrdefs "github.com/containerd/errdefs"
 	"github.com/docker/docker/api/types/container"
+	imagetypes "github.com/docker/docker/api/types/image"
 	"github.com/docker/docker/api/types/mount"
+	"github.com/docker/docker/client"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -316,4 +324,87 @@ func TestParseDataStateAt(t *testing.T) {
 func TestIsEmptyDirectory_NonExistent(t *testing.T) {
 	_, err := IsEmptyDirectory("/nonexistent/path/12345")
 	assert.Error(t, err)
+}
+
+type inspectFn func(ctx context.Context, imageID string, opts ...client.ImageInspectOption) (imagetypes.InspectResponse, error)
+type pullFn func(ctx context.Context, refStr string, options imagetypes.PullOptions) (io.ReadCloser, error)
+
+// fakePuller implements imagePuller for testing PullImage in isolation.
+type fakePuller struct {
+	inspect    inspectFn
+	pull       pullFn
+	pullCalled bool
+}
+
+func (f *fakePuller) ImageInspect(ctx context.Context, imageID string, opts ...client.ImageInspectOption) (imagetypes.InspectResponse, error) {
+	if f.inspect != nil {
+		return f.inspect(ctx, imageID, opts...)
+	}
+	return imagetypes.InspectResponse{}, errors.New("inspect not implemented")
+}
+
+func (f *fakePuller) ImagePull(ctx context.Context, refStr string, options imagetypes.PullOptions) (io.ReadCloser, error) {
+	f.pullCalled = true
+	if f.pull != nil {
+		return f.pull(ctx, refStr, options)
+	}
+	return nil, errors.New("pull not implemented")
+}
+
+func TestPullImage(t *testing.T) {
+	notFound := fmt.Errorf("no such image: %w", cerrdefs.ErrNotFound)
+	wrappedNotFound := fmt.Errorf("inspect failed: %w", notFound)
+
+	localImage := func(context.Context, string, ...client.ImageInspectOption) (imagetypes.InspectResponse, error) {
+		return imagetypes.InspectResponse{ID: "sha256:abc"}, nil
+	}
+	notFoundInspect := func(context.Context, string, ...client.ImageInspectOption) (imagetypes.InspectResponse, error) {
+		return imagetypes.InspectResponse{}, notFound
+	}
+	wrappedNotFoundInspect := func(context.Context, string, ...client.ImageInspectOption) (imagetypes.InspectResponse, error) {
+		return imagetypes.InspectResponse{}, wrappedNotFound
+	}
+	daemonDownInspect := func(context.Context, string, ...client.ImageInspectOption) (imagetypes.InspectResponse, error) {
+		return imagetypes.InspectResponse{}, errors.New("daemon down")
+	}
+
+	emptyStream := func(context.Context, string, imagetypes.PullOptions) (io.ReadCloser, error) {
+		return io.NopCloser(strings.NewReader("")), nil
+	}
+	errorStream := func(context.Context, string, imagetypes.PullOptions) (io.ReadCloser, error) {
+		body := `{"errorDetail":{"message":"manifest for postgresai/extended-postgres:99-bogus not found: manifest unknown"},"error":"manifest unknown"}`
+		return io.NopCloser(strings.NewReader(body)), nil
+	}
+
+	testCases := []struct {
+		name            string
+		inspect         inspectFn
+		pull            pullFn
+		wantErr         bool
+		wantErrContains string
+		wantPullCalled  bool
+	}{
+		{name: "image already local skips pull", inspect: localImage},
+		{name: "not found triggers pull", inspect: notFoundInspect, pull: emptyStream, wantPullCalled: true},
+		{name: "wrapped not found triggers pull", inspect: wrappedNotFoundInspect, pull: emptyStream, wantPullCalled: true},
+		{name: "non-not-found inspect error propagates", inspect: daemonDownInspect, wantErr: true, wantErrContains: "failed to inspect image"},
+		{name: "pull stream error propagates", inspect: notFoundInspect, pull: errorStream, wantErr: true, wantErrContains: "failed to pull image", wantPullCalled: true},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			puller := &fakePuller{inspect: tc.inspect, pull: tc.pull}
+
+			err := PullImage(context.Background(), puller, "postgresai/extended-postgres:test")
+
+			if tc.wantErr {
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), tc.wantErrContains)
+			} else {
+				require.NoError(t, err)
+			}
+
+			assert.Equal(t, tc.wantPullCalled, puller.pullCalled)
+		})
+	}
 }
