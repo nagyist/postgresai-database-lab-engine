@@ -172,9 +172,9 @@ For proposals, bug reports, and participation in development, see our [Contribut
 - [How to install and initialize Database Lab CLI](https://postgres.ai/docs/how-to-guides/cli/cli-install-init)
 - [How to manage DBLab](https://postgres.ai/docs/how-to-guides/administration)
 - [How to work with clones](https://postgres.ai/docs/how-to-guides/cloning)
-- [How to work with branches](XXXXXXX) – TBD
-- [How to integrate DBLab with GitHub Actions](XXXXXXX) – TBD
-- [How to integrate DBLab with GitLab CI/CD](XXXXXXX) – TBD
+- [How to work with branches](https://postgres.ai/docs/dblab-howtos/branching)
+- How to integrate DBLab with GitHub Actions – TBD
+- How to integrate DBLab with GitLab CI/CD – TBD
 
 You can find more in the ["How-to guides" section](https://postgres.ai/docs/how-to-guides) of the documentation.
 

@@ -16,14 +16,14 @@ info:
   license:
     name: Apache 2.0
     url: https://github.com/postgres-ai/database-lab-engine/blob/dle-4-0/LICENSE
-  version: 4.0.0
+  version: 4.1.0
 externalDocs:
   description: DBLab Docs
-  url: https://gitlab.com/postgres-ai/docs/tree/master/docs/database-lab
+  url: https://postgres.ai/docs/database-lab
 
 servers:
   - url: "https://demo.dblab.dev/api"
-    description: "DBLab 4.0 demo server (with DB branching support); token: 'demo-token'"
+    description: "DBLab demo server (with DB branching support); token: 'demo-token'"
     x-examples:
       Verification-Token: "demo-token"
   - url: "https://demo.aws.postgres.ai:446/api"
@@ -1255,6 +1255,22 @@ paths:
               example:
                 code: "UNAUTHORIZED"
                 message: "Check your verification token."
+  /metrics:
+    get:
+      tags:
+      - Instance
+      summary: Prometheus metrics
+      description: "Returns Prometheus-formatted metrics for monitoring the DBLab instance.
+        Includes metrics for instance status, disk usage, clones, snapshots, branches,
+        sync status, and more. This endpoint does not require the 'Verification-Token' header."
+      operationId: metrics
+      responses:
+        200:
+          description: Prometheus metrics in text format
+          content:
+            text/plain:
+              schema:
+                type: string
   /observation/start:
     post:
       tags:
