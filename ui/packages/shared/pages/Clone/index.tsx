@@ -651,7 +651,7 @@ export const Clone = observer((props: Props) => {
           </p>
           <div style={{ marginTop: '8px', marginBottom: '16px' }}>
             <Select
-              label="Deletion protection"
+              label={"Deletion\u00a0protection"}
               items={
                 clone.protected && clone.protectedTillDate
                   ? [
@@ -663,7 +663,7 @@ export const Clone = observer((props: Props) => {
               value={getCurrentProtectionValue()}
               onChange={handleProtectionChange}
               disabled={isDisabledControls}
-              style={{ minWidth: 100 }}
+              style={{ minWidth: 200 }}
             />
             {isUpdatingClone && <Spinner size="sm" className={classes.spinner} />}
           </div>
