@@ -393,6 +393,7 @@ export const CreateClone = observer((props: Props) => {
             <h2 className={styles.title}>Clone protection</h2>
 
             <Select
+              fullWidth
               label="Deletion protection"
               items={(() => {
                 const maxDurationMinutes = stores.main.instance?.state?.cloning?.protectionMaxDurationMinutes ?? 0
@@ -423,7 +424,6 @@ export const CreateClone = observer((props: Props) => {
                 formik.setFieldValue('protectionDurationMinutes', e.target.value)
               }
               disabled={isCreatingClone}
-              style={{ minWidth: 100 }}
             />
 
             <p className={styles.remark}>
