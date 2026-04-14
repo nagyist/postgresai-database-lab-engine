@@ -138,6 +138,26 @@ export const tooltipText = {
       hyphen, underscore, equal sign, and double quotes.
     </div>
   ),
+  restoreConfigs: () => (
+    <div>
+      PostgreSQL configuration parameters applied during logical restore (one{' '}
+      <span className={styles.firaCodeFont}>parameter=value</span> per line).
+      These settings are written to{' '}
+      <span className={styles.firaCodeFont}>postgresql.conf</span> before
+      restore starts and do not affect clones. Useful for tuning restore
+      performance, for example:
+      <br />
+      <span className={styles.firaCodeFont}>maintenance_work_mem=8GB</span>
+      <br />
+      <span className={styles.firaCodeFont}>
+        max_parallel_maintenance_workers=7
+      </span>
+      <br />
+      <span className={styles.firaCodeFont}>shared_preload_libraries=</span>
+      <br />
+      <span className={styles.firaCodeFont}>fsync=off</span>
+    </div>
+  ),
   timetable: () => (
     <div>
       Schedule for full data refreshes, in{' '}

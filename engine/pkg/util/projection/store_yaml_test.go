@@ -184,6 +184,51 @@ nested:
 	require.Equal(t, []interface{}{"--no-privileges", "--no-owner"}, itemsVal)
 }
 
+func TestStoreYaml_MergeKeyCreatesDirect(t *testing.T) {
+	type mergeStruct struct {
+		Configs      map[string]interface{} `proj:"parent.options.configs,createKey"`
+		ParallelJobs *int64                 `proj:"parent.options.parallelJobs"`
+	}
+
+	const yamlData = `
+defaults: &defaults
+  configs:
+    shared_buffers: 1GB
+    work_mem: 100MB
+
+parent:
+  options:
+    <<: *defaults
+    parallelJobs: 4
+`
+
+	node := &yaml.Node{}
+	err := yaml.Unmarshal([]byte(yamlData), node)
+	require.NoError(t, err)
+
+	pj := int64(8)
+	s := &mergeStruct{Configs: map[string]interface{}{"fsync": "off", "maintenance_work_mem": "8GB"}, ParallelJobs: &pj}
+
+	err = StoreYaml(s, node, StoreOptions{})
+	require.NoError(t, err)
+
+	soft, err := NewSoftYaml(node)
+	require.NoError(t, err)
+
+	configVal, err := soft.Get(FieldGet{Path: []string{"parent", "options", "configs"}, Type: ptypes.Map})
+	require.NoError(t, err)
+	require.Equal(t, map[string]interface{}{"fsync": "off", "maintenance_work_mem": "8GB"}, configVal)
+
+	pjVal, err := soft.Get(FieldGet{Path: []string{"parent", "options", "parallelJobs"}, Type: ptypes.Int64})
+	require.NoError(t, err)
+	require.Equal(t, int64(8), pjVal)
+
+	// verify anchor source was not modified
+	defaultConfigs, err := soft.Get(FieldGet{Path: []string{"defaults", "configs"}, Type: ptypes.Map})
+	require.NoError(t, err)
+	require.Equal(t, map[string]interface{}{"shared_buffers": "1GB", "work_mem": "100MB"}, defaultConfigs)
+}
+
 func TestStoreYaml_NilMapPreservesExisting(t *testing.T) {
 	type mapStruct struct {
 		Name   *string                `proj:"nested.name"`
