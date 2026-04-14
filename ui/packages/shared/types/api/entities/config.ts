@@ -51,6 +51,7 @@ export type configTypes = {
           customOptions?: string[]
           parallelJobs?: string | number
           ignoreErrors?: boolean
+          configs?: { [key: string]: string }
         }
       }
     }
@@ -103,6 +104,14 @@ export const formatConfig = (config: configTypes) => {
       config.retrieval?.spec?.logicalRestore?.options?.parallelJobs,
     restoreIgnoreErrors:
       config.retrieval?.spec?.logicalRestore?.options?.ignoreErrors,
+    restoreConfigs: (() => {
+      const configs =
+        config.retrieval?.spec?.logicalRestore?.options?.configs
+      if (!configs || Object.keys(configs).length === 0) return ''
+      return Object.entries(configs)
+        .map(([k, v]) => `${k}=${v}`)
+        .join('\n')
+    })(),
     pgDumpCustomOptions: formatDumpCustomOptions(
       (config.retrieval?.spec?.logicalDump?.options
         ?.customOptions as string[] | undefined) ?? null,

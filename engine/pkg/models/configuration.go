@@ -24,6 +24,7 @@ type ConfigProjection struct {
 	DBList               map[string]interface{} `proj:"retrieval.spec.logicalDump.options.databases,createKey"`
 	DumpParallelJobs     *int64                 `proj:"retrieval.spec.logicalDump.options.parallelJobs"`
 	RestoreParallelJobs  *int64                 `proj:"retrieval.spec.logicalRestore.options.parallelJobs"`
+	RestoreConfigs       map[string]interface{} `proj:"retrieval.spec.logicalRestore.options.configs,createKey"`
 	DumpCustomOptions    []interface{}          `proj:"retrieval.spec.logicalDump.options.customOptions"`
 	RestoreCustomOptions []interface{}          `proj:"retrieval.spec.logicalRestore.options.customOptions"`
 	IgnoreDumpErrors     *bool                  `proj:"retrieval.spec.logicalDump.options.ignoreErrors"`

@@ -42,9 +42,21 @@ func (y *yamlSoft) Set(set FieldSet) error {
 			return fmt.Errorf("node is not a mapping node")
 		}
 
-		child, hasChild := findNodeForKey(node, key)
+		isLastSegment := i == len(set.Path)-1
+
+		var (
+			child    *yaml.Node
+			hasChild bool
+		)
+
+		if isLastSegment && set.CreateKey {
+			child, hasChild = findDirectNodeForKey(node, key)
+		} else {
+			child, hasChild = findNodeForKey(node, key)
+		}
+
 		if !hasChild {
-			if set.CreateKey && i == len(set.Path)-1 {
+			if set.CreateKey && isLastSegment {
 				child = &yaml.Node{
 					Kind: yaml.ScalarNode,
 					Tag:  "!!map",
@@ -129,10 +141,39 @@ func (y *yamlSoft) Get(get FieldGet) (interface{}, error) {
 	return typed, nil
 }
 
-func findNodeForKey(node *yaml.Node, key string) (*yaml.Node, bool) {
+// findDirectNodeForKey looks up a key in a mapping node's direct children only.
+func findDirectNodeForKey(node *yaml.Node, key string) (*yaml.Node, bool) {
 	for i := 0; i < len(node.Content); i += 2 {
 		if node.Content[i].Value == key {
 			return node.Content[i+1], true
+		}
+	}
+
+	return nil, false
+}
+
+// findNodeForKey looks up a key in a mapping node, resolving YAML merge keys (<<: *alias).
+func findNodeForKey(node *yaml.Node, key string) (*yaml.Node, bool) {
+	if child, ok := findDirectNodeForKey(node, key); ok {
+		return child, true
+	}
+
+	for i := 0; i < len(node.Content); i += 2 {
+		if node.Content[i].Tag != "!!merge" {
+			continue
+		}
+
+		merged := node.Content[i+1]
+		if merged.Kind == yaml.AliasNode && merged.Alias != nil {
+			merged = merged.Alias
+		}
+
+		if merged.Kind != yaml.MappingNode {
+			continue
+		}
+
+		if child, ok := findNodeForKey(merged, key); ok {
+			return child, true
 		}
 	}
 

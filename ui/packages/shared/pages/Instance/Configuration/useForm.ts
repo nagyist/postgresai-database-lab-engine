@@ -28,6 +28,7 @@ export type FormValues = {
   dumpIgnoreErrors: boolean
   restoreParallelJobs: string
   restoreIgnoreErrors: boolean
+  restoreConfigs: string
   pgDumpCustomOptions: string
   pgRestoreCustomOptions: string
 }
@@ -60,6 +61,7 @@ export const useForm = (onSubmit: (values: FormValues) => void) => {
       databases: '',
       dumpParallelJobs: '',
       restoreParallelJobs: '',
+      restoreConfigs: '',
       pgDumpCustomOptions: '',
       pgRestoreCustomOptions: '',
       dumpIgnoreErrors: false,

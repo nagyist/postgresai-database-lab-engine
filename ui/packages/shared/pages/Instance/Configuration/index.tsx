@@ -1120,6 +1120,16 @@ export const Configuration = observer(
                     )
                   }
                 />
+                <InputWithTooltip
+                  type="textarea"
+                  label="Restore PostgreSQL configs"
+                  value={formik.values.restoreConfigs}
+                  tooltipText={tooltipText.restoreConfigs}
+                  disabled={isConfigurationDisabled}
+                  onChange={(e) =>
+                    formik.setFieldValue('restoreConfigs', e.target.value)
+                  }
+                />
                 <FormControlLabel
                   style={{ maxWidth: 'max-content' }}
                   control={

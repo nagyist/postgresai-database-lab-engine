@@ -2,6 +2,7 @@ import {
   postUniqueCustomOptions,
   postUniqueDatabases,
 } from '@postgres.ai/shared/pages/Instance/Configuration/utils'
+import { formatTuningParamsToObj } from '@postgres.ai/shared/types/api/endpoints/testDbSource'
 import { Config } from '@postgres.ai/shared/types/api/entities/config'
 import { request } from 'helpers/request'
 
@@ -51,6 +52,7 @@ export const updateConfig = async (req: Config) => {
               ),
               parallelJobs: req.restoreParallelJobs,
               ignoreErrors: req.restoreIgnoreErrors,
+              configs: formatTuningParamsToObj(req.restoreConfigs),
             },
           },
         },

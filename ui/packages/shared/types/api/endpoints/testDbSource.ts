@@ -39,8 +39,10 @@ export const formatTuningParamsToObj = (tuningParams: string | undefined) => {
   if (tuningParams) {
     const tuningParamsArr = tuningParams.split('\n')
     tuningParamsArr.forEach((param) => {
-      const paramArr = param.split('=')
-      formattedTuningParams[paramArr[0]] = paramArr[1]
+      const eqIndex = param.indexOf('=')
+      if (eqIndex !== -1) {
+        formattedTuningParams[param.substring(0, eqIndex)] = param.substring(eqIndex + 1)
+      }
     })
   }
 
