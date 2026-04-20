@@ -1,0 +1,203 @@
+# Scheduled CVE audit. Produces JSON + human-readable reports as artifacts.
+#
+# Trigger: GitLab CI Schedule with variable SECURITY_AUDIT=1.
+# Also runs on manual (web) trigger with the same variable.
+#
+# Configure a weekly schedule at: Settings > CI/CD > Schedules.
+# Recommended cadence: weekly (e.g. Monday 03:00 UTC).
+
+.security_rules: &security_rules
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule" && $SECURITY_AUDIT == "1"
+    - if: $CI_PIPELINE_SOURCE == "web" && $SECURITY_AUDIT == "1"
+  interruptible: false
+
+# Must list every stage used across all included files — a later `stages:`
+# declaration replaces earlier ones (GitLab merges by overwrite, not append).
+# Keep in sync with engine/.gitlab-ci.yml if stages change there.
+stages:
+  - test
+  - build-binary
+  - build
+  - integration-test
+  - security
+
+cve-govulncheck:
+  <<: *security_rules
+  stage: security
+  image:
+    name: golang:1.26
+    pull_policy: if-not-present
+  before_script:
+    - go install golang.org/x/vuln/cmd/govulncheck@latest
+  script:
+    - mkdir -p cve-reports
+    - cd engine
+    - govulncheck -format json ./... > ../cve-reports/govulncheck.json || true
+    - govulncheck ./... > ../cve-reports/govulncheck.txt || true
+    - cd ..
+    - echo "=== govulncheck summary ==="
+    - tail -40 cve-reports/govulncheck.txt || true
+  artifacts:
+    when: always
+    name: "cve-go-$CI_COMMIT_SHORT_SHA"
+    paths:
+      - cve-reports/govulncheck.json
+      - cve-reports/govulncheck.txt
+    expire_in: 90 days
+  allow_failure: true
+
+cve-pnpm-audit:
+  <<: *security_rules
+  stage: security
+  image:
+    name: node:20-alpine
+    pull_policy: if-not-present
+  before_script:
+    - apk add --no-cache git jq
+    - npm install -g pnpm@9
+  script:
+    - mkdir -p cve-reports
+    - cd ui
+    - pnpm install --frozen-lockfile --ignore-scripts || pnpm install --ignore-scripts
+    - pnpm audit --json > ../cve-reports/pnpm-audit.json || true
+    - pnpm audit > ../cve-reports/pnpm-audit.txt || true
+    - cd ..
+    - echo "=== pnpm audit summary ==="
+    - jq '.metadata.vulnerabilities // .vulnerabilities // {}' cve-reports/pnpm-audit.json || true
+  artifacts:
+    when: always
+    name: "cve-ui-$CI_COMMIT_SHORT_SHA"
+    paths:
+      - cve-reports/pnpm-audit.json
+      - cve-reports/pnpm-audit.txt
+    expire_in: 90 days
+  allow_failure: true
+
+cve-trivy-image:
+  <<: *security_rules
+  stage: security
+  image:
+    name: aquasec/trivy:latest
+    entrypoint: [""]
+    pull_policy: if-not-present
+  variables:
+    # Latest build from the master branch. Override via schedule variable for ad-hoc scans.
+    CVE_SCAN_IMAGE: "registry.gitlab.com/postgres-ai/database-lab/dblab-server:master"
+    TRIVY_CACHE_DIR: ".trivycache"
+    TRIVY_NO_PROGRESS: "true"
+    # Authenticate to GitLab Container Registry via CI job token.
+    TRIVY_USERNAME: "$CI_REGISTRY_USER"
+    TRIVY_PASSWORD: "$CI_REGISTRY_PASSWORD"
+  cache:
+    key: trivy-db
+    paths:
+      - .trivycache/
+  script:
+    - mkdir -p cve-reports
+    - trivy --version
+    - trivy image --download-db-only
+    - trivy image --severity CRITICAL,HIGH,MEDIUM --format json -o cve-reports/trivy.json "$CVE_SCAN_IMAGE" || true
+    - trivy image --severity CRITICAL,HIGH -o cve-reports/trivy.txt "$CVE_SCAN_IMAGE" || true
+    - echo "=== trivy severity counts ==="
+    - |
+      trivy image --severity CRITICAL,HIGH,MEDIUM,LOW --format json "$CVE_SCAN_IMAGE" 2>/dev/null \
+        | grep -oE '"Severity":"[A-Z]+"' | sort | uniq -c || true
+  artifacts:
+    when: always
+    name: "cve-image-$CI_COMMIT_SHORT_SHA"
+    paths:
+      - cve-reports/trivy.json
+      - cve-reports/trivy.txt
+    expire_in: 90 days
+  allow_failure: true
+
+cve-summary:
+  <<: *security_rules
+  stage: security
+  needs:
+    - job: cve-govulncheck
+      artifacts: true
+      optional: true
+    - job: cve-pnpm-audit
+      artifacts: true
+      optional: true
+    - job: cve-trivy-image
+      artifacts: true
+      optional: true
+  image:
+    name: alpine:3.20
+    pull_policy: if-not-present
+  before_script:
+    - apk add --no-cache jq bash
+  script:
+    - |
+      bash -c '
+      set -u
+      mkdir -p cve-reports
+      out=cve-reports/SUMMARY.md
+      {
+        echo "# CVE audit report"
+        echo
+        echo "- Date: $(date -u +%FT%TZ)"
+        echo "- Pipeline: $CI_PIPELINE_URL"
+        echo "- Commit: $CI_COMMIT_SHORT_SHA"
+        echo
+
+        echo "## Severity counts"
+        echo
+        echo "### Docker image (trivy)"
+        if [ -f cve-reports/trivy.json ]; then
+          jq -r "[.Results[]? | .Vulnerabilities[]? | .Severity] | group_by(.) | map(\"- \(.[0]): \(length)\") | .[]" cve-reports/trivy.json || echo "- (no data)"
+        else
+          echo "- (trivy did not run)"
+        fi
+        echo
+
+        echo "### Go (govulncheck)"
+        if [ -f cve-reports/govulncheck.json ]; then
+          called=$(jq -rs "[.[] | .finding? | select(. != null) | select((.trace // []) | any(.function != null)) | .osv] | unique | length" cve-reports/govulncheck.json 2>/dev/null || echo "?")
+          imported=$(jq -rs "[.[] | .finding? | select(. != null) | .osv] | unique | length" cve-reports/govulncheck.json 2>/dev/null || echo "?")
+          echo "- called (code path reachable): $called unique advisories"
+          echo "- imported (including unreachable): $imported unique advisories"
+        else
+          echo "- (govulncheck did not run)"
+        fi
+        echo
+
+        echo "### UI (pnpm audit)"
+        if [ -f cve-reports/pnpm-audit.json ]; then
+          jq -r "(.metadata.vulnerabilities // .vulnerabilities // {}) | to_entries[] | \"- \(.key): \(.value)\"" cve-reports/pnpm-audit.json 2>/dev/null || echo "- (parse failed; see pnpm-audit.txt)"
+        else
+          echo "- (pnpm audit did not run)"
+        fi
+        echo
+
+        echo "## Top fixable CRITICAL/HIGH in image"
+        echo
+        if [ -f cve-reports/trivy.json ]; then
+          jq -r "[.Results[]? | .Vulnerabilities[]? | select((.Severity==\"CRITICAL\" or .Severity==\"HIGH\") and (.Status==\"fixed\" or .FixedVersion != null and .FixedVersion != \"\"))] | unique_by(.VulnerabilityID + .PkgName) | map(\"- \(.Severity) \(.VulnerabilityID) — \(.PkgName) \(.InstalledVersion) → \(.FixedVersion)\") | .[]" cve-reports/trivy.json | head -40
+        fi
+        echo
+
+        echo "## Unfixed CRITICAL/HIGH in image"
+        echo
+        if [ -f cve-reports/trivy.json ]; then
+          jq -r "[.Results[]? | .Vulnerabilities[]? | select((.Severity==\"CRITICAL\" or .Severity==\"HIGH\") and ((.FixedVersion // \"\") == \"\"))] | unique_by(.VulnerabilityID + .PkgName) | map(\"- \(.Severity) \(.VulnerabilityID) — \(.PkgName) \(.InstalledVersion) (no upstream fix)\") | .[]" cve-reports/trivy.json | head -40
+        fi
+        echo
+
+        echo "## Artifacts"
+        echo
+        echo "- cve-reports/govulncheck.{json,txt}"
+        echo "- cve-reports/pnpm-audit.{json,txt}"
+        echo "- cve-reports/trivy.{json,txt}"
+      } > "$out"
+      cat "$out"
+      '
+  artifacts:
+    when: always
+    name: "cve-summary-$CI_COMMIT_SHORT_SHA"
+    paths:
+      - cve-reports/
+    expire_in: 365 days
