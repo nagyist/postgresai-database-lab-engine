@@ -1,9 +1,9 @@
 # See Guides to learn how to start a container: https://postgres.ai/docs/how-to-guides/administration/engine-manage
 
-FROM docker:29.3.1
+FROM docker:29.4.0@sha256:a6dd5322747a95cd8e3207bd8d415a8fd20ec34e9c00f06dc019cbd912013489
 
 # Install dependencies
-RUN apk update \
+RUN apk upgrade --no-cache \
   && apk add --no-cache zfs lvm2 bash util-linux tzdata
 
 WORKDIR /home/dblab

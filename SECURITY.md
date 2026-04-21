@@ -23,5 +23,16 @@ The reporter will be kept updated at every stage of the issue's analysis and res
 ## Public Disclosure Timing
 A public disclosure date is negotiated by the Postgres.ai security team and the bug submitter. We prefer to fully disclose the bug as soon as possible once user mitigation is available. It is reasonable to delay disclosure when the bug or the fix is not yet fully understood, the solution is not well-tested, or for vendor coordination. The timeframe for disclosure is from immediate (especially if it's already publicly known) to a few weeks. We expect the time-frame between a report to public disclosure to typically be in the order of 7 days. The Database Lab Engine maintainers and the security team will take the final call on setting a disclosure date.
 
+## Known unfixed vulnerabilities
+Some third-party CVEs cannot yet be patched in DBLab Engine for reasons outside of the project's control (no upstream fix released, major-version migration required, or embedded in base-image internals). They are tracked here and resolved as upstream fixes become available.
+
+| Component | CVE(s) | Notes |
+|-----------|--------|-------|
+| `github.com/docker/docker` v28.5.2+incompatible (Go module) | [CVE-2026-34040](https://nvd.nist.gov/vuln/detail/CVE-2026-34040) | No v29 tag is published for this module. Upstream has moved to `github.com/moby/moby/v2`, still in beta at the time of writing. Will be resolved once a stable v29 release or the v2 migration is available. |
+| `docker:29.x` base-image embedded binaries (`containerd`, `ctr`, `dockerd`, `compose`, `buildx`) | Multiple — see the [Docker Hub `docker` image advisories](https://hub.docker.com/_/docker/tags) and upstream tracker pages for [containerd](https://github.com/containerd/containerd/security/advisories) and [buildx](https://github.com/docker/buildx/security/advisories) | Depends on Docker Inc. rebuilding `docker:29.x` with updated internals. Tracked and refreshed together with each base-image bump; images are pinned by digest so any rebuild lands via an explicit commit. |
+| `Dockerfile.dblab-server-zfs08` (ZFS 0.8 legacy variant) | Inherits base-image CVEs from `docker:27.5.1` ([CVE-2025-15558](https://nvd.nist.gov/vuln/detail/CVE-2025-15558) in docker/cli) and Alpine v3.12 package CVEs not covered by `apk upgrade` ([CVE-2026-28390](https://nvd.nist.gov/vuln/detail/CVE-2026-28390) musl, [CVE-2026-40200](https://nvd.nist.gov/vuln/detail/CVE-2026-40200) openssl, [CVE-2026-22184](https://nvd.nist.gov/vuln/detail/CVE-2026-22184) zlib) | The ZFS 0.8 variant is retained for users on legacy ZFS pools. Alpine v3.12 and `docker:27.5.1` are end-of-life, so upgrading the base image would break the ZFS 0.8 compatibility guarantee. A separate track will deprecate or rebuild this variant. |
+
+Operators should subscribe to upstream advisories for the affected components and re-deploy once DBLab Engine images built against patched versions are published.
+
 
 *This document has been inspired by and adapted from [https://github.com/hasura/graphql-engine/blob/master/SECURITY.md](https://github.com/hasura/graphql-engine/blob/master/SECURITY.md).*

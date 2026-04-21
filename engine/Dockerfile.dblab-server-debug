@@ -12,11 +12,17 @@ RUN go install github.com/go-delve/delve/cmd/dlv@latest
 # RUN GO111MODULE=on CGO_ENABLED=0 go build -gcflags="all=-N -l" -o /dblab-server-debug ./cmd/database-lab/main.go
 
 # Final stage
-FROM docker:29.3.1
+FROM docker:29.4.0@sha256:a6dd5322747a95cd8e3207bd8d415a8fd20ec34e9c00f06dc019cbd912013489
 
 # Install dependencies
-RUN apk update \
-  && apk add zfs=2.1.4-r0 --no-cache --repository=https://dl-cdn.alpinelinux.org/alpine/edge/main \
+# Install the pinned edge-repo zfs build before `apk upgrade`, then pass
+# `--ignore zfs` to keep that pin intact during the CVE-sweep upgrade.
+# Do not mirror this pattern in Dockerfile.dblab-server: that image uses the
+# stable Alpine zfs package and does not need the pin or the `--ignore`.
+# `apk upgrade` is intentionally non-reproducible here — each rebuild picks
+# up the latest Alpine security fixes.
+RUN apk add zfs=2.1.4-r0 --no-cache --repository=https://dl-cdn.alpinelinux.org/alpine/edge/main \
+  && apk upgrade --no-cache --ignore zfs \
   && apk add --no-cache lvm2 bash util-linux tzdata
 
 WORKDIR /home/dblab
