@@ -1,7 +1,7 @@
 # How to start a container: https://postgres.ai/docs/how-to-guides/administration/engine-manage
 
 # Compile stage
-FROM golang:1.26 AS build-env
+FROM golang:1.26.2 AS build-env
 
 # Build Delve
 RUN go install github.com/go-delve/delve/cmd/dlv@latest
@@ -12,7 +12,7 @@ RUN go install github.com/go-delve/delve/cmd/dlv@latest
 # RUN GO111MODULE=on CGO_ENABLED=0 go build -gcflags="all=-N -l" -o /dblab-server-debug ./cmd/database-lab/main.go
 
 # Final stage
-FROM docker:29.4.0@sha256:a6dd5322747a95cd8e3207bd8d415a8fd20ec34e9c00f06dc019cbd912013489
+FROM docker:29.4.1@sha256:c77e5d7912f9b137cc67051fdc2991d8f5ae22c55ddf532bb836dcb693a04940
 
 # Install dependencies
 # Install the pinned edge-repo zfs build before `apk upgrade`, then pass
